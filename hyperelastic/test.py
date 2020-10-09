@@ -1,43 +1,31 @@
+import os
 from dolfin import *
+from matplotlib import pyplot as plt
 
 # Optimization options for the form compiler
 parameters["form_compiler"]["cpp_optimize"] = True
 
 # Read mesh and define function space
-fname = '/home/john/research/meshes/sphere_in_cube.xdmf'
-file_in = XDMFFile(fname)
 mesh = Mesh()
-tdim = mesh.topology().dim()
-# Create facet function over mesh, unitialized values
-# boundaries = MeshFunction('size_t', mesh, tdim - 1)
-# plot(boundaries, title='unitialized values', interactive=True)
+with XDMFFile("meshes/tetra.xdmf") as infile:
+    infile.read(mesh)
 
+# What do MeshValueCollection and MeshFunction do?
+# How to use MeshFunction to define bc?
+mvc = MeshValueCollection("size_t", mesh, 2)
+with XDMFFile("meshes/triangle.xdmf") as infile:
+    infile.read(mvc, "triangle")
 
-file_in.read(mesh)
-width = 5
-radius = 1
+mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
-#mesh = UnitCubeMesh(16, 16, 16)
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
-def outer(x, on_boundary):
-    cond = near(abs(x[0]), width) or near(abs(x[1]), width) or near(abs(x[2]), width)
-    return cond and on_boundary
-
-def inner(x, on_boundary):
-    r = sqrt(x[0]*x[0] + x[1]*x[1] + x[2]*x[2])
-    cond = near(r, radius)
-    if cond:
-        print(r)
-    return cond 
-
-# Define Dirichlet boundary (x = 0 or x = 1)
+# Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_D = Expression(('0','0','1 + x[0]'), degree=1) # expression defined solution values on boundary
+u_D = Constant((0.0, 0.0, 2.0)) 
 
-bc1 = DirichletBC(V, u_D, inner)
-bc2 = DirichletBC(V, zero, outer)
-
+bc1 = DirichletBC(V, u_D, mf, 1)  # inner bc
+bc2 = DirichletBC(V, zero, mf, 2) # outer bc
 bcs = [bc1, bc2]
 
 # Define functions
@@ -79,7 +67,6 @@ solver = NonlinearVariationalSolver(problem)
 solver.solve()
 
 # Save solution in VTK format
-file = File("hyperelastic/displacement2.pvd")
+file = File("displacement2.pvd")
 file << u
-
 
