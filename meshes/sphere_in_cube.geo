@@ -54,7 +54,7 @@ Physical Surface("inner_surface", 1) = {14, 16, 18, 20, 22, 24, 26, 28};
 // Mesh.Algorithm3D = 4;
 
 lc2 = 2;
-w = 5; // 0.5 width of cube
+w = 2; // 0.5 width of cube
 Point(10) = {-w,-w,-w,lc2};
 Point(11) = {w,-w,-w,lc2};
 Point(12) = {w,w,-w,lc2};

@@ -22,9 +22,10 @@ V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_D = Constant((0.0, 0.0, 2.0)) 
+u_0 = Expression(("x[0]*0.5","-x[1]*0.5","x[2]*0.25"), degree=1)
+u_1 = Expression(("x[0]*x[0]*0.5","x[1]*0.5","x[2]*0.25"), degree=2)
 
-bc1 = DirichletBC(V, u_D, mf, 1)  # inner bc
+bc1 = DirichletBC(V, u_1, mf, 1)  # inner bc
 bc2 = DirichletBC(V, zero, mf, 2) # outer bc
 bcs = [bc1, bc2]
 
@@ -62,7 +63,7 @@ F = derivative(Pi, u, w)
 J = derivative(F, u, du)
 
 # Create nonlinear variational problem and solve
-problem = NonlinearVariationalProblem(F, u, bcs=bc1, J=J)
+problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
 solver = NonlinearVariationalSolver(problem)
 solver.solve()
 
