@@ -7,13 +7,13 @@ parameters["form_compiler"]["cpp_optimize"] = True
 
 # Read mesh and define function space
 mesh = Mesh()
-with XDMFFile("meshes/tetra.xdmf") as infile:
+with XDMFFile("tetra.xdmf") as infile:
     infile.read(mesh)
 
 # What do MeshValueCollection and MeshFunction do?
 # How to use MeshFunction to define bc?
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile("meshes/triangle.xdmf") as infile:
+with XDMFFile("triangle.xdmf") as infile:
     infile.read(mvc, "triangle")
 
 mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
@@ -22,10 +22,10 @@ V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_0 = Expression(("x[0]*0.5","-x[1]*0.5","x[2]*0.25"), degree=1)
+u_0 = Expression(("x[0]*c","0","0"), degree=1, c = -.5)
 u_1 = Expression(("x[0]*x[0]*0.5","x[1]*0.5","x[2]*0.25"), degree=2)
 
-bc1 = DirichletBC(V, u_1, mf, 1)  # inner bc
+bc1 = DirichletBC(V, u_0, mf, 1)  # inner bc
 bc2 = DirichletBC(V, zero, mf, 2) # outer bc
 bcs = [bc1, bc2]
 
