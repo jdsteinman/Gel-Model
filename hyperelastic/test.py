@@ -22,7 +22,7 @@ V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_0 = Expression(("x[0]*c","0","0"), degree=1, c = -.5)
+u_0 = Expression(("x[0]*c","0","0"), degree=1, c = 0.5)
 u_1 = Expression(("x[0]*x[0]*0.5","x[1]*0.5","x[2]*0.25"), degree=2)
 
 bc1 = DirichletBC(V, u_0, mf, 1)  # inner bc
