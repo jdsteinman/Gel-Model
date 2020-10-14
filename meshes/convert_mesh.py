@@ -1,7 +1,7 @@
 import meshio
 import numpy as np
 
-filename = "sphere_in_cube"
+filename = "ellipsoid2"
 
 msh = meshio.read(filename+".msh")
 for cell in msh.cells:
