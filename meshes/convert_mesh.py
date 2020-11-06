@@ -1,7 +1,7 @@
 import meshio
 import numpy as np
 
-filename = "ellipsoid2"
+filename = "ellipsoid3"
 
 msh = meshio.read(filename+".msh")
 for cell in msh.cells:

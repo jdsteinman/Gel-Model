@@ -8,7 +8,7 @@ BooleanDifference(3) = {Volume{2}; Delete; }{Volume{1}; Delete; };
 Physical Volume(4) = {3};
 
 Mesh.Algorithm = 6;
-Characteristic Length{:} = .1;
+Characteristic Length{:} = .15;
 
 //+
 Physical Surface(1) = {7};
