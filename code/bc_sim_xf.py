@@ -52,7 +52,7 @@ class bc_nw(UserExpression):
 
 
 class Surface(SubDomain):
-
+    # Creates a class representing Surface
     def init_record(self):
         self.x_record = []
 
@@ -105,7 +105,7 @@ output_folder = date_str + "_G" + gel_str + "_uncentered_unpca"
 cytod_surf = meshio.read(path + "cytod_uncentered_unpca" + ".msh")
 cytod_faces = cytod_surf.cells[0].data
 cytod_vol = meshio.read(path + "cytod_uncentered_unpca_vol_r5" + ".msh")
-# sys.argv[1]
+
 # with open("Data/" + input_folder + "/metadata.json", "r") as j_file:
 #     meta_dict = json.load(j_file)
 
@@ -184,7 +184,8 @@ u = Function(V)
 # Gel boundary conditions
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
-sbd = []
+sbd = [] # surface boundary conditions
+
 sbd.append(CompiledSubDomain("near(x[0], side)", side = 0))
 sbd.append(CompiledSubDomain("near(x[1], side)", side = 0))
 sbd.append(CompiledSubDomain("near(x[2], side)", side = 0))
