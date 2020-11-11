@@ -8,15 +8,15 @@ parameters["form_compiler"]["cpp_optimize"] = True
 # Read mesh and define function space
 lpath = "../meshes/"
 mesh = Mesh()
-with XDMFFile(lpath + "tetra.xdmf") as infile:
+with XDMFFile(lpath + "basicPseudopodsTetra.xdmf") as infile:
     infile.read(mesh)
 
 # What do MeshValueCollection and MeshFunction do?
 # How to use MeshFunction to define bc?
 # Outer surfaces
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile(lpath + "triangle.xdmf") as infile:
-    infile.read(mvc, "triangle")
+with XDMFFile(lpath + "basicPseudopodsTriangle.xdmf") as infile:
+    infile.read(mvc, "basicPseudopodsTriangle")
 
 mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
