@@ -1,7 +1,7 @@
 import meshio
 import numpy as np
 
-filename = "ellipsoid"
+filename = "ellipsoidwpseudopods"
 
 msh = meshio.read(filename+".msh")
 for cell in msh.cells:
@@ -22,6 +22,6 @@ triangle_mesh =meshio.Mesh(points=msh.points,
                            cells=[("triangle", triangle_cells)],
                            cell_data={"triangle":[triangle_data]})
 
-meshio.write("tetra.xdmf", tetra_mesh)
-meshio.write("triangle.xdmf", triangle_mesh)
+meshio.write("basicPseudopodsTetra.xdmf", tetra_mesh)
+meshio.write("basicPseudopodsTriangle.xdmf", triangle_mesh)
 
