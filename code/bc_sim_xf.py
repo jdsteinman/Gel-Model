@@ -100,7 +100,7 @@ def solver_call(u, du, bcs):
 date_str = "06092019"
 gel_str = "1"
 path = "../data/" + date_str + "_G" + gel_str + "/"
-chunks = int(100) # How many steps to you want to break the prescribed displacement into?
+chunks = int(100) # How many steps to you want to break the prescribed displacement into? # what does this actually do?
 output_folder = date_str + "_G" + gel_str + "_uncentered_unpca"
 cytod_surf = meshio.read(path + "cytod_uncentered_unpca" + ".msh")
 cytod_faces = cytod_surf.cells[0].data
@@ -114,8 +114,8 @@ with XDMFFile(path + "cytod_uncentered_unpca_vol_r5" + ".xdmf") as infile:
     infile.read(mesh)
 
 mvc = MeshValueCollection("size_t", mesh, 2)
-# with XDMFFile(path + "cytod_uncentered_unpca_vol_r5" + "_function.xdmf") as infile:
-#     infile.read(mvc)
+with XDMFFile(path + "cytod_uncentered_unpca_vol_r5" + "_function.xdmf") as infile:
+     infile.read(mvc)
 
 # Create derivative data
 subdomains = cpp.mesh.MeshFunctionSizet(mesh, mvc)
@@ -134,31 +134,36 @@ y_res = 0.29286
 z_res = 0.8
 
 surf_mesh1_midpoints = create_surf_midpoints(cytod_surf)
+#TODO: Why is this labeled Vertical Displacement?
 vert_disp = pd.read_csv(path + "displacements_cytod_to_normal_uncentered_unpca.csv",
                         header=None).values
-
+#TODO: Currently dividing each element by 100?
 vert_disp = vert_disp/chunks
-midpoint_disp = np.zeros((cytod_faces.shape[0], 3))
+midpoint_disp = np.zeros((cytod_faces.shape[0], 3)) # create an array #faces by 3
+
 for idx, face in enumerate(cytod_faces):
+    # Assign average displacement to tetra midpoint
     midpoint_disp[idx, :] = np.mean((vert_disp[face[0]],
                                      vert_disp[face[1]],
                                      vert_disp[face[2]]), axis=0)
+
+#TODO: What boundary is this Marking?                                     
 mesh_boundaries = np.vstack((cytod_vol.points.min(0), cytod_vol.points.max(0))).T
 
 ## Mark surface facets of mesh (2D)
 domains = MeshFunction("size_t", mesh, 2)
 surf = Surface()
 surf.init_record()
-surf.mark(domains, 1)
-
+surf.mark(domains, 1) # mark all surfaces 1
 
 ## Revert domain marking of OUTER boundary of gel && create cell_idx -> transformation dict
 change_log = []
 cell_idx_list = np.zeros(midpoint_disp.shape[0])
 for index, face in enumerate(faces(mesh)):
 
-    x, y, z = face.midpoint().array()
+    x, y, z = face.midpoint().array() # get location of midpoint
     if domains.array()[index] == 1:
+        # If face is on outer boundary, change MeshFunction to 0
         if np.isclose(x, mesh_boundaries[0, 0], atol=1) or np.isclose(x, mesh_boundaries[0, 1], atol=1):
             domains.array()[index] = 0
             change_log.append(index)
@@ -168,6 +173,7 @@ for index, face in enumerate(faces(mesh)):
         elif np.isclose(z, mesh_boundaries[2, 0], atol=1) or np.isclose(z, mesh_boundaries[2, 1], atol=1):
             domains.array()[index] = 0
             change_log.append(index)
+        # If face is on cell surface, add
         else:
             dist_mat = distance_matrix(np.array([[x, y, z]]), surf_mesh1_midpoints)
             cell_idx_list[np.argmin(dist_mat)] = face.entities(3)[0]
@@ -193,7 +199,7 @@ sbd.append(CompiledSubDomain("near(x[0], side)", side = x_bound))
 sbd.append(CompiledSubDomain("near(x[1], side)", side = y_bound))
 sbd.append(CompiledSubDomain("near(x[2], side)", side = z_bound))
 [bcs.append((DirichletBC(V, zero, sub))) for sub in sbd]
-bcs.append(None)
+bcs.append(None) # why?
 
 total_start = time.time()
 for idx in range(chunks):
