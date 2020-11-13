@@ -8,22 +8,23 @@ parameters["form_compiler"]["cpp_optimize"] = True
 # Read mesh and define function space
 lpath = "../meshes/"
 mesh = Mesh()
-with XDMFFile(lpath + "basicPseudopodsTetra.xdmf") as infile:
+with XDMFFile(lpath + "TwoPseudopodsTetra.xdmf") as infile:
     infile.read(mesh)
 
 # What do MeshValueCollection and MeshFunction do?
 # How to use MeshFunction to define bc?
 # Outer surfaces
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile(lpath + "basicPseudopodsTriangle.xdmf") as infile:
-    infile.read(mvc, "basicPseudopodsTriangle")
+with XDMFFile(lpath + "TwoPseudopodsTriangle.xdmf") as infile:
+    infile.read(mvc, "triangle")
 
 mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_0 = Expression(("a*x[0]","b*x[1]","x[2]*c"), degree=1, a = .25, b = .25, c = -.50)
+u_0 = Expression(("a*x[0]*1.5/11.5","x[1]*1.5/7.6","x[2]*3.5/18.75"), degree=1, a = 0.05, b = .05, c = -.1)
+#u_0 = Expression(("a*x[0]*1.5/11.5","x[1]*1.5/7.6","x[2]*3.5/18.75"), degree=1, a = 0.05, b = .05, c = -.1)
 
 bc1 = DirichletBC(V, u_0, mf, 1)  # inner bc
 bc2 = DirichletBC(V, zero, mf, 2) # outer bc
@@ -32,8 +33,8 @@ bcs = [bc1, bc2]
 # Define functions
 du, w = TrialFunction(V), TestFunction(V)      # Incremental displacement
 u  = Function(V, name="disp")                  # Displacement from previous iteration
-b  = Constant((0.0, -0.5, 0.0))  # Body force per unit volume
-h  = Constant((0.1,  0.0, 0.0))  # Traction force on the boundary
+b  = Constant((0, 0, 0))  # Body force per unit volume
+h  = Constant((0, 0, 0))  # Traction force on the boundary
 
 # Kinematics
 d = u.geometric_dimension()
@@ -68,6 +69,7 @@ solver = NonlinearVariationalSolver(problem)
 solver.solve()
 
 # Save solution in VTK format
-file = File("output/hyper_solution.pvd")
+file = File("output/2pods.pvd")
 file << u
 
+#try saving in xdmf format instead

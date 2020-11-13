@@ -9,6 +9,7 @@ psay = 7.6;
 psaz = 13;
 Dilate {{0, 0, 0}, {psax, psay, psaz}} {Volume{1};}
 Sphere(2) = {0, 0, 0, 1};
+Sphere(3) = {0, 0, 0, 1};
 
 // Protrusions
 
@@ -16,20 +17,28 @@ Sphere(2) = {0, 0, 0, 1};
 psax = 5;
 psay = 3;
 psaz = 18.75;
+
 Dilate {{0, 0, 0}, {psax, psay, psaz}} {Volume{2};}
+Dilate {{0, 0, 0}, {psax, psay, psaz}} {Volume{3};}
+
+// Rotate Pseudopods
+Rotate {{0, 1, 0}, {0, 0, 0}, Pi/6} { Volume{2} ; }
+Rotate {{0, 1, 0}, {0, 0, 0}, -Pi/6} { Volume{3} ; }
 
 // Merge Volumes
-BooleanUnion(3) = {Volume{1}; Delete; }{Volume{2}; Delete; };
-Physical Volume(4) = {3};
+BooleanUnion(4) = {Volume{1}; Delete; }{Volume{2}; Delete; };
+//Physical Volume(5) = {4};
+BooleanUnion(5) = {Volume{4}; Delete; }{Volume{3}; Delete; };
+Physical Volume(6) = {5};
 
 // Gel
 l = 150; // Side length of box
-Box(5) = {-l/2, -l/2, -l/2,  l, l, l};
-BooleanDifference(6) = {Volume{5}; Delete; }{Volume{3}; Delete; };
+Box(7) = {-l/2, -l/2, -l/2,  l, l, l};
+BooleanDifference(8) = {Volume{7}; Delete; }{Volume{5}; Delete; };
 
 // Physical Entities
-Physical Volume(7) = {6};
-Physical Surface(1) = {7, 8, 9};            // Cell Surface
+Physical Volume(9) = {8};
+Physical Surface(1) = {7, 8, 9, 10, 11};            // Cell Surface
 Physical Surface(2) = {4, 5, 3, 2, 6, 1};   // Box Surface
 
 Mesh.Algorithm = 6;
