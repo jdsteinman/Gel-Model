@@ -1,7 +1,0 @@
-/tmp/tmpjk3bz11m/dolfin_expression_9050b242d4e346526ba73b3ab0c8a54b.cpp: In member function ‘virtual void dolfin::dolfin_expression_9050b242d4e346526ba73b3ab0c8a54b::eval(Eigen::Ref<Eigen::Matrix<double, -1, 1> >, Eigen::Ref<const Eigen::Matrix<double, -1, 1> >) const’:
-/tmp/tmpjk3bz11m/dolfin_expression_9050b242d4e346526ba73b3ab0c8a54b.cpp:63:45: error: invalid operands of types ‘Eigen::DenseCoeffsBase<Eigen::Ref<const Eigen::Matrix<double, -1, 1> >, 0>::CoeffReturnType’ {aka ‘double’} and ‘double’ to binary ‘operator^’
-   63 |           values[2] = ((x[0]*x[0]+x[2]*x[2])^0.5)*3.5/18.75;
-      |                        ~~~~~~~~~~~~~~~~~~~~~^~~~
-      |                                  |           |
-      |                                  |           double
-      |                                  Eigen::DenseCoeffsBase<Eigen::Ref<const Eigen::Matrix<double, -1, 1> >, 0>::CoeffReturnType {aka double}
