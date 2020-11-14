@@ -37,7 +37,7 @@ parameters["form_compiler"]["cpp_optimize"] = True
 
 # Read mesh and define function space
 lpath = "../meshes/"
-filename = "ellipsoidw2pods"
+filename = "ellipsoidw4pods"
 mesh = Mesh()
 with XDMFFile(lpath + filename + "Tetra.xdmf") as infile:
     infile.read(mesh)
@@ -54,8 +54,8 @@ V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_0 = Expression(("a*x[0]*1.5/11.5","x[1]*1.5/7.6","-x[2]*3.5/18.75"), degree=1, a = 0.05, b = .05, c = -.1)
-#u_0 = cell_bc(-0.2, 0.1)
+#u_0 = Expression(("a*x[0]*1.5/11.5","x[1]*1.5/7.6","x[2]*3.5/18.75"), degree=1, a = 0.05, b = .05, c = -.1)
+u_0 = cell_bc(-0.2, 0.1)
 
 bc1 = DirichletBC(V, u_0, mf, 1)  # inner bc
 bc2 = DirichletBC(V, zero, mf, 2) # outer bc

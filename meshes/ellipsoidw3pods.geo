@@ -53,6 +53,11 @@ Physical Surface(1) = {7, 8, 9, 10};          // Cell Surface
 Physical Surface(2) = {1, 2, 3, 4, 5, 6};   // Box Surface
 
 Mesh.Algorithm = 6;
-Characteristic Length{:} = 15;
-Characteristic Length{PointsOf{Physical Volume{0};}}  = 15;
+Characteristic Length{:} = 10;
+Characteristic Length{PointsOf{Physical Volume{0};}}  = 10;
 Characteristic Length{PointsOf{Physical Surface{1};}} = 1;
+
+// Generate Mesh
+Mesh 3;
+Mesh.MshFileVersion = 2.2;
+Save "ellipsoidw3pods.msh";
