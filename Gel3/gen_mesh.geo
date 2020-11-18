@@ -1,4 +1,4 @@
-Merge "cytod_uncentered_unpca2.stl";
+Merge "cytod_uncentered_unpca_new.stl";
 CreateTopology;
 
 Physical Surface(1) = {1};

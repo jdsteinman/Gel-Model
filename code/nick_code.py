@@ -31,21 +31,24 @@ How to run:
 ## Define objects and functions  
 class bc_nw(UserExpression):
     def __init__(self, mesh, cell2trans_dict, **kwargs):
-        self.mesh = mesh                         # input
-        self._cell2trans_dict = cell2trans_dict  # dict does what?
-        self.cell_record = []                    #
-        self.x_record = []                       #
-        self.error_log = []                      #
+        self.mesh = mesh                         # volume mesh
+        self._cell2trans_dict = cell2trans_dict  # maps contains displacement data for triangular elements
+        self.cell_record = []                    # random logs
+        self.x_record = []                       
+        self.error_log = [] 
         super().__init__(**kwargs)
 
-    def value_shape(self):
+    # Define value dimensions: displacement vector
+    def value_shape(self): 
         return (3,)
 
+    # Function to set surface boundary condition
     def eval_cell(self, value, x, cell):
         try:
+            # Set value at volume_node with mapping to known surface_node
             value[0], value[1], value[2] = self._cell2trans_dict[cell.index]
         except KeyError:
-            value[0], value[1], value[2] = (0, 0, 0)
+            value[0], value[1], value[2] = (0, 0, 0)  # default to 0
             self.error_log.append(cell)
         self.cell_record.append(cell)
         self.x_record.append(x)
@@ -60,9 +63,9 @@ class Surface(SubDomain):
         return on_boundary
 
 def create_surf_midpoints(surf_mesh):
-    # surf_mesh.cells returns cell connectivity 
+    # surf_mesh.cells returns cell connectivity
+    # i.e. element node1 node2 node3 
     cell_dict = dict(surf_mesh.cells)
-
 
     # Preallocate space for surface element midpoints. 
     # cell_dict['triangle'] returns Nx3 numpy array of global element nodes
@@ -71,7 +74,10 @@ def create_surf_midpoints(surf_mesh):
     # Calculate and store the centroid of each triangular element
     # Numpy iteration performed on first axis (rows)
     for idx, nodes in enumerate(cell_dict['triangle']):
+        # points returns coordinates of triange vertices
+        # mean(0) takes avarage of each dim 
         midpoints[idx] = surf_mesh.points[nodes].mean(0)
+
     return midpoints
 
 def solver_call(u, du, bcs):
@@ -104,30 +110,31 @@ def solver_call(u, du, bcs):
 # ===========================================================================================
 
 ## Files
-# cytod_uncentered_unpca.msh         -> cytod_faces
-# cytod_uncentered_unpca_vol_r5.msh  -> cytod_vol
-# cytod_uncentered_unpca_vol_r5.xdmf -> mesh
-# displacements_cytod_to_normal_uncentered_unpca.csv
+surf_mesh_file = "cytod_uncentered_unpca.msh"
+vol_mesh_file = "cytod_uncentered_unpca_vol_r5.msh" 
+vol_xdmf_file  = "cytod_uncentered_unpca_vol_r5.xdmf"
+disp_file = "displacements_cytod_to_normal_uncentered_unpca.csv"
 
 date_str = "06092019"
 gel_str = "1"
 path = "../data/" + date_str + "_G" + gel_str + "/"
 output_folder = date_str + "_G" + gel_str + "_uncentered_unpca"
 
-chunks = int(100) # How many steps to you want to break the prescribed displacement into? TODO
+chunks = int(100) # How many steps to you want to break the prescribed displacement into? 
 
 ## Load Mesh
 # meshio.read() returns a meshio 'mesh' object
-cytod_surf = meshio.read(path + "cytod_uncentered_unpca" + ".msh")        # read 2D mesh
-cytod_faces = cytod_surf.cells[0].data                                    # store 2D element nodes
-cytod_vol = meshio.read(path + "cytod_uncentered_unpca_vol_r5" + ".msh")  # Used to determine outer BC
+cytod_surf = meshio.read(path + surf_mesh_file)        # Read 2D mesh
+cytod_faces = cytod_surf.cells[0].data                 # Store 2D element nodes
+cytod_vol = meshio.read(path + vol_mesh_file)          # Read 3D mesh. Used for geometries
 
 ## TODO: What is meta data?
 # with open("Data/" + input_folder + "/metadata.json", "r") as j_file:
 #     meta_dict = json.load(j_file)
 
+# Load Fenics Mesh
 mesh = Mesh()  # create empty Fenics mesh
-with XDMFFile(path + "cytod_uncentered_unpca_vol_r5" + ".xdmf") as infile:
+with XDMFFile(path + vol_xdmf_file) as infile:
     infile.read(mesh)  # read mesh data from xdmf
 
 ## Mesh Value Collection: Store values associates with mesh entities
@@ -205,9 +212,8 @@ for index, face in enumerate(faces(mesh)):      # faces() returns mesh iterator
         else:
             # Are we getting connectivity?
             # Not changing meshFunction?
-            dist_mat = distance_matrix(np.array([[x, y, z]]), surf_mesh1_midpoints)   # Why do we need to do this? Connectivity between cytod_faces and mesh?
+            dist_mat = distance_matrix(np.array([[x, y, z]]), surf_mesh1_midpoints)   # 
             cell_idx_list[np.argmin(dist_mat)] = face.entities(3)[0]                  # what is face.entities(3) returning? --> [a  b]
-            print(np.argmin(dist_mat))
 
 ## Setting up simulation
 dx = Measure('dx', domain=mesh, subdomain_data=subdomains, metadata={'quadrature_degree': 2})
@@ -232,38 +238,37 @@ sbd.append(CompiledSubDomain("near(x[2], side)", side = z_bound))
 [bcs.append((DirichletBC(V, zero, sub))) for sub in sbd]
 bcs.append(None) # why?
 
-# total_start = time.time()
-# for idx in range(chunks):
-#     iter_start = time.time()
-#     print()
-#     print("solver Call: ", idx)
-#     print("----------------")
+total_start = time.time()
+for idx in range(chunks):
+    iter_start = time.time()
+    print()
+    print("solver Call: ", idx)
+    print("----------------")
 
-#     ## Create boundary condition function
-#     cell2trans_dict = dict(zip(cell_idx_list,
-#                                midpoint_disp*(idx+1)))
-#     boundary_func = bc_nw(mesh, cell2trans_dict)
-#     bcs[-1] = DirichletBC(V, boundary_func, domains, 1)
-#     print("bc created")
-#     u, du = solver_call(u, du, bcs)
-#     print("Time: ", time.time() - iter_start)
+    ## Create boundary condition function
+    cell2trans_dict = dict(zip(cell_idx_list,
+                               midpoint_disp*(idx+1)))
+    boundary_func = bc_nw(mesh, cell2trans_dict)
+    bcs[-1] = DirichletBC(V, boundary_func, domains, 1)
+    print("bc created")
+    u, du = solver_call(u, du, bcs)
+    print("Time: ", time.time() - iter_start)
 
-#     if idx==1:
-#         """
-#         Really bad code. Meant to prematurely break out of loop so that the solution doesn't not
-#         converge.
-#         """
-#         break
+    if idx==1:
+        """
+        Really bad code. Meant to prematurely break out of loop so that the solution doesn't not
+        converge.
+        """
+        #break
 
-# print()
-# print("Total Time: ", time.time() - total_start)
+print()
+print("Total Time: ", time.time() - total_start)
 
-# ## Exporting Data
-# hdf5_file = HDF5File(mesh.mpi_comm(),
-#                      "output/" + output_folder + "/function_dump.h5",
-#                      "w")
-# hdf5_file.write(u, "/function")
-# hdf5_file.close()
+## Exporting Data
+hdf5_file = HDF5File(mesh.mpi_comm(),
+                     "output/" + output_folder + "/function_dump.h5", "w")
+hdf5_file.write(u, "/function")
+hdf5_file.close()
 
-# file = File("output/" + output_folder + "/solution.pvd")
-# file << u
+file = File("output/" + output_folder + "/solution.pvd")
+file << u
