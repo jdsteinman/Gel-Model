@@ -1,7 +1,7 @@
 Merge "cytod_uncentered_unpca.stl";
 CreateTopology;
 
-// Physical Surface(1) = {1};  // VIC surface
+// Physical Surface(200) = {1};  // VIC surface
 
 // Lengths
 length = 150.;
@@ -97,9 +97,12 @@ Return
 x = 72.2393420333335; y =	72.9653489566665;	z = 46.8100199433333;
 //x = 80; y = 73; z = 40; r = 3;
 lcar2 = 0.5;
+
 //Call CheeseHole;  // Don't need the nucleus yet
 
 // Ceneter the Box
+// Translate {-x, -y, -z} {Point in Surface {1}; }
+// Translate {-length/2, -height/2, -depth/2} {Surface {14, 16, 18, 20, 22, 24}; }
 Translate {x-length/2, y-height/2, z-depth/2} {Surface {14, 16, 18, 20, 22, 24}; }
 
 // Define Volumes
@@ -114,7 +117,7 @@ Physical Surface(201) = {1};               // cell surface
 Physical Volume(300) = {26};               // gel
 //Physical Volume(200) = {28};               // cytoplasm
 //Physical Volume(300) = thehole;          // nucleus
-Mesh.CharacteristicLengthFactor = 10;
+Mesh.CharacteristicLengthFactor = 20;
 
 // Generate Mesh
 Mesh 3;
