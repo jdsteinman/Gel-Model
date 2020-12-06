@@ -112,7 +112,7 @@ Surface Loop(27) = {-1,-s1,-s2,-s3,-s4,-s5,-s6,-s7,-s8};
 Volume(28) = {27};
 
 // Physical Entities
-Physical Surface(200) = {14,16,18,20,24};  // outer box
+Physical Surface(200) = {14,16,18,20,22,24};  // outer box
 Physical Surface(201) = {1};               // cell surface
 Physical Volume(300) = {26};               // gel
 //Physical Volume(200) = {28};               // cytoplasm

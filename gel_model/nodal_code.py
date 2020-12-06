@@ -9,7 +9,6 @@ import json
 from dolfin import *
 import os
 
-
 """
 Extremely messy first-attempt at BC-simulation with Alex's mapping
 
@@ -20,6 +19,11 @@ TODO:
 - better documentation
 - switch from face bc's to vertex bc's
 
+Prerequisites:
+- Gel Volume Mesh
+- Surface mesh
+- Displacements correspoding to surface mesh nodes
+
 How to run:
 - cd ./code
 - Type in the terminal: nohup python3 bc_sim_xf.py 100 &
@@ -28,14 +32,12 @@ How to run:
 
 """
 
-## Define objects and functions
+## Define objects and functions ===========================================================================
 class bc_nw(UserExpression):
-    def __init__(self, mesh, mf, cell2trans_dict, **kwargs):
-        self.mesh = mesh  
-        self.mf = mf
-        self._cell2trans_dict = cell2trans_dict  
+    def __init__(self, mesh, cell2trans_dict, **kwargs):
+        self.mesh = mesh  # input mesh
+        self._cell2trans_dict = cell2trans_dict 
         self.cell_record = []
-        self.node_record = []
         self.x_record = []
         self.error_log = []
         super().__init__(**kwargs)
@@ -43,14 +45,14 @@ class bc_nw(UserExpression):
     def value_shape(self):
         return (3,)
 
-    def eval(self, values, x, cell):
-        if self.mf[cell.index] == 200:
-                if( near(x[0], ) )
-                values[0], values[1], values[2] = self._cell2trans_dict[cell.index]
-                
+    def eval_cell(self, value, x, cell):
+        try:
+            value[0], value[1], value[2] = self._cell2trans_dict[cell.index]
+        except KeyError:
+            value[0], value[1], value[2] = (0, 0, 0)
+            self.error_log.append(cell)
         self.cell_record.append(cell)
         self.x_record.append(x)
-
 
 class Surface(SubDomain):
     # Creates a class representing Surface
@@ -60,7 +62,6 @@ class Surface(SubDomain):
     def inside(self, x, on_boundary):
         self.x_record.append(x)
         return on_boundary
-
 
 def create_surf_midpoints(surf_mesh):
     cell_dict = dict(surf_mesh.cells)
@@ -79,10 +80,11 @@ def solver_call(u, du, bcs):
     Ic = tr(C)
     J = det(F)
 
-    # Material properties
-    shr0, nu0 = 1.0, 0.45
-    mu = 3
-    lmbda = 1
+    # mu = 325 * 10^12
+    mu = 325    # 2nd lame parameter (shear modulus)
+    nu = 0.49   # Poisson's ratio
+    E = 2*mu*(1+nu)
+    lmbda = E*nu/((1 + nu)*(1 - 2*nu))   # 1st  lame parameter
 
     # Math
     psi = (mu / 2) * (Ic - 3) - mu * ln(J) + (lmbda / 2) * (ln(J)) ** 2
@@ -96,129 +98,125 @@ def solver_call(u, du, bcs):
     return u, du
 
 
-## Filenames
-# date_str = "06092019"
-# gel_str = "1"
+## Simulation Setup =======================================================================================
 path = "../data/Gel3/"
-mesh_name  =     "cytod_uncentered_unpca.msh"
-mesh_name_xdmf = "cytod_uncentered_unpca.xdmf"
-surf_mesh_name = "cytod_uncentered_unpca_surface.msh"
-disp_name = "displacements_cytod_to_normal_uncentered_unpca.csv"
-# output_folder = date_str + "_G" + gel_str + "_uncentered_unpca"
+chunks = int(100) 
+output_folder =  "./output/Gel3_small_mu/"
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
 
-chunks = int(100) # How many steps to you want to break the prescribed displacement into?
+outer_number = 200
+inner_number = 201
+volume_number = 300
 
-## Import Data
-cytod_vol   = meshio.read(path + "cytod_uncentered_unpca.msh")
-cytod_surf  = meshio.read(path + "cytod_uncentered_unpca_surface.msh")
-cytod_faces = cytod_surf.cells[0].data  # surface mesh connectivity
+cytod_surf = meshio.read(path + "cytod_uncentered_unpca_surface" + ".xdmf")   # for disp mapping
+cytod_faces = cytod_surf.cells[0].data
+cytod_vol = meshio.read(path + "cytod_uncentered_unpca" + ".msh")   # for mesh function
 
+# Read volume mesh
 mesh = Mesh()
-with XDMFFile(path + 'Tetra.xdmf') as infile:
+with XDMFFile(path + "cytod_uncentered_unpca_tetra.xdmf") as infile:
     infile.read(mesh)
 
+# Get surface numbers
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile(path + "Triangle.xdmf") as infile:
-     infile.read(mvc)
+with XDMFFile(path + "cytod_uncentered_unpca_triangle.xdmf") as infile:
+    infile.read(mvc, "triangle")    # store physical numbers
 
-mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)  # marks VIC surface and outer boundary
-
-## Create derivative data
-subdomains = cpp.mesh.MeshFunctionSizet(mesh, mvc)
+# Mesh Functions
+domains = cpp.mesh.MeshFunctionSizet(mesh, mvc)   
+subdomains = cpp.mesh.MeshFunctionSizet(mesh, mvc) # Derivative data
 subdomains.set_all(0)
 
-## Displacements
-surf_mesh_midpoints = create_surf_midpoints(cytod_surf)
-node_disp = pd.read_csv(path + "predicted_normal_vertices_from_cytod.txt", header=None, sep=" ").values
-node_disp = node_disp/chunks  # scale down for initial run
-
+# Read displacements
+surf_mesh1_midpoints = create_surf_midpoints(cytod_surf)
+vert_disp = pd.read_csv(path + "displacements_cytod_to_normal_uncentered_unpca.csv",
+                        header=None).values
+vert_disp = vert_disp/chunks
 midpoint_disp = np.zeros((cytod_faces.shape[0], 3)) # create an array #faces by 3
 
 for idx, face in enumerate(cytod_faces):
     # Assign average displacement to tetra midpoint
-    midpoint_disp[idx, :] = np.mean((node_disp[face[0]],
-                                     node_disp[face[1]],
-                                     node_disp[face[2]]), axis=0)
+    midpoint_disp[idx, :] = np.mean((vert_disp[face[0]],
+                                     vert_disp[face[1]],
+                                     vert_disp[face[2]]), axis=0)
 
-## Mark surface facets of mesh (2D)
-domains = MeshFunction("size_t", mesh, 2)
-surf = Surface()
-surf.init_record()
-surf.mark(domains, 1) # mark all surfaces 1
-
-## Revert domain marking of OUTER boundary of gel && create cell_idx -> transformation dict
-change_log = []
+# Get face mapping
 cell_idx_list = np.zeros(midpoint_disp.shape[0])
+i = 0
 for index, face in enumerate(faces(mesh)):
-
     x, y, z = face.midpoint().array() # get location of midpoint
-    if domains.array()[index] == 1:
-        # If face is on outer boundary, change MeshFunction to 0
-        if np.isclose(x, mesh_boundaries[0, 0], atol=1) or np.isclose(x, mesh_boundaries[0, 1], atol=1):
-            domains.array()[index] = 0
-            change_log.append(index)
-        elif np.isclose(y, mesh_boundaries[1, 0], atol=1) or np.isclose(y, mesh_boundaries[1, 1], atol=1):
-            domains.array()[index] = 0
-            change_log.append(index)
-        elif np.isclose(z, mesh_boundaries[2, 0], atol=1) or np.isclose(z, mesh_boundaries[2, 1], atol=1):
-            domains.array()[index] = 0
-            change_log.append(index)
-        # If face is on cell surface, add
-        else:
-            dist_mat = distance_matrix(np.array([[x, y, z]]), surf_mesh1_midpoints)
-            cell_idx_list[np.argmin(dist_mat)] = face.entities(3)[0]
-        if idx == 1: print(x, y, z)
+    if domains.array()[index] == inner_number:
+        i += 1
+        dist_mat = distance_matrix(np.array([[x, y, z]]), surf_mesh1_midpoints)
+        cell_idx_list[np.argmin(dist_mat)] = face.entities(3)[0]
+    elif domains.array()[index] == outer_number:
+        continue
+    else:
+        domains.array()[index] = 199  # Easir visualization in paraview
 
-## Setting up simulation
+# Setting up simulation
 dx = Measure('dx', domain=mesh, subdomain_data=subdomains, metadata={'quadrature_degree': 2})
-
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 sF = FunctionSpace(mesh, "Lagrange", 1)
 du = TrialFunction(V)
 v = TestFunction(V)
-u = Function(V)
+u = Function(V, name="disp")
 
 # Gel boundary conditions
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
-
-obc = DirichletBC(V, zero, mf, 201)  # outer bc
-bcs.append(obc) 
+bcs.append(DirichletBC(V, zero, domains, outer_number))
 bcs.append(None) 
 
-# total_start = time.time()
-# for idx in range(chunks):
-#     iter_start = time.time()
-#     print()
-#     print("solver Call: ", idx)
-#     print("----------------")
+## Simulation ===================================================================================================
+total_start = time.time()
+for idx in range(chunks):
+    iter_start = time.time()
+    print()
+    print("solver Call: ", idx)
+    print("----------------")
 
-#     ## Create boundary condition function
-#     cell2trans_dict = dict(zip(cell_idx_list,
-#                                midpoint_disp*(idx+1)))
-#     boundary_func = bc_nw(mesh, cell2trans_dict)
-#     bcs[-1] = DirichletBC(V, boundary_func, domains, 1)
-#     print("bc created")
-#     u, du = solver_call(u, du, bcs)
-#     print("Time: ", time.time() - iter_start)
+    # Create boundary condition function
+    cell2trans_dict = dict(zip(cell_idx_list,
+                               midpoint_disp*(idx+1)))
 
-#     if idx==1:
-#         """
-#         Really bad code. Meant to prematurely break out of loop so that the solution doesn't not
-#         converge.
-#         """
-#         break
+    boundary_func = bc_nw(mesh, cell2trans_dict)
+    bcs[-1] = DirichletBC(V, boundary_func, domains, inner_number)
+ 
+    print("bc created")
+    u, du = solver_call(u, du, bcs)
+    print("Time: ", time.time() - iter_start)
 
-# print()
-# print("Total Time: ", time.time() - total_start)
+    # Logs
+    with open(output_folder + 'error_log.txt', 'a+') as f:
+        f.write("Iteration: %d\n" % idx)
+        for item in boundary_func.error_log:
+            f.write("%s\n" % item)
+
+    ## Uncomment following line to prematurely break out of solver
+    # if idx==1: break
+
+print()
+print("Total Time: ", time.time() - total_start)
+
+## Output ============================================================================================
+u.set_allow_extrapolation(True)
+beads_init = np.genfromtxt("../data/Gel3/beads_init.txt", delimiter=" ")
+beads_disp = np.array([u(p) for p in beads_init])
+
+# Tabulate dof coordinates
+u_arr = u.compute_vertex_values()  # 1-d numpy array
+length = np.shape(u_arr)[0]
+u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
+
+# Save txt solutions
+np.savetxt(output_folder + "sim_beads_disp.txt", beads_disp, delimiter=" ")
+np.savetxt(output_folder + "sim_vertex_disp.txt", u_arr, delimiter=" ")
+
+# Paraview output
+disp_file = File(output_folder + "displacement.pvd")
+disp_file << u
 
 
-# ## Exporting Data
-# hdf5_file = HDF5File(mesh.mpi_comm(),
-#                      "output/" + output_folder + "/function_dump.h5",
-#                      "w")
-# hdf5_file.write(u, "/function")
-# hdf5_file.close()
 
-# file = File("output/" + output_folder + "/solution.pvd")
-# file << u

@@ -9,35 +9,28 @@ close all
 
 % Written by: John Steinman
 
-%% Import data
-
-% import cell vertices and faces
-path = '../gel_model/output/';
-vertices = textread('nodes.txt');
-surf_vertices = textread('nodes_new.txt');
-faces = textread('surf_cells_new.txt');
-faces = faces+1;
-
-% import bead locations in the initial and final configuration
-displacements = textread('../gel_model/output/ellipsoid_sol.txt'); 
-initial = vertices;
 
 %% Import data
 
-data_path = '../gel_model/output/';
-mesh_path = './ellipsoid/';
-vertices = textread(strcat(mesh_path, 'nodes.txt'));
-surf_vertices = textread(strcat(mesh_path, 'nodes_new.txt'));
-faces = textread(strcat(mesh_path, 'surf_cells_new.txt'));
-faces = faces+1;
+sim_path = '../gel_model/output/Gel3/';
+data_path = '../data/Gel3/';
+output_path = "./Gel3_post/";
+if ~exist(output_path, 'dir')
+   mkdir(output_path)
+end
+
+vertices = textread(strcat(data_path, 'gel_vertices.txt'));
+surf_vertices = textread(strcat(data_path, 'CytoD_vertices.txt'));
+faces = textread(strcat(data_path, 'CytoD_faces.txt'));
+% faces = faces+1;
 
 % import bead locations in the initial and final configuration
-displacements = textread(strcat(data_path, 'ellipsoid_sol.txt')); 
+displacements = textread(strcat(sim_path, 'sim_vertex_disp.txt')); 
 initial = vertices;
 final = initial + displacements;
 
-beads_init = textread(strcat(data_path, 'ellipsoid_beads_init.txt')); 
-beads_disp = textread(strcat(data_path, 'ellipsoid_beads_disp.txt')); 
+% beads_init = textread(strcat(data_path, 'ellipsoid_beads_init.txt')); 
+% beads_disp = textread(strcat(data_path, 'ellipsoid_beads_disp.txt')); 
 %% Compute unit normal vectors at the cell vertices
 
 % pre-allocation of surface normals
@@ -82,12 +75,9 @@ disp_mag = vecnorm(displacements, 2, 2);
 % Change nan to 0
 direction(isnan(direction)) = 0;
 
-%%
-
-
 
 %% Output file
-ofile = fopen('for_paraview.csv', 'w');
+ofile = fopen(strcat(output_path, 'for_paraview.csv'), 'w+');
 fprintf(ofile, 'p_x,p_y,p_z,u_x,u_y,u_z,dot\n');
 for i =1:length(initial)
    fprintf(ofile, '%10.9f,%10.9f,%10.9f,', vertices(i,:));
@@ -95,7 +85,6 @@ for i =1:length(initial)
    fprintf(ofile, '%10.9f\n', direction(i));
 end
 
-% fprintf(ofile, '%10.9f\n', direction);
-% fclose(ofile);
+
 
 
