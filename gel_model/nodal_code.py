@@ -80,8 +80,8 @@ def solver_call(u, du, bcs):
     Ic = tr(C)
     J = det(F)
 
-    mu = 325 * 10^12
-    # mu = 325   # 2nd lame parameter (shear modulus)
+    # mu = 325 * 10^12
+    mu = 325   # 2nd lame parameter (shear modulus)
     nu = 0.49   # Poisson's ratio
     E = 2*mu*(1+nu)
     lmbda = E*nu/((1 + nu)*(1 - 2*nu))   # 1st  lame parameter

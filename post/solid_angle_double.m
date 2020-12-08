@@ -15,7 +15,7 @@ close all
 
 data_path = '../data/Gel3/';
 sim_path = '../gel_model/output/Gel3/';
-output_path = './Gel3_post/';
+output_path = './Gel3/';
 if ~exist(output_path, 'dir')
    mkdir(output_path)
 end
@@ -258,6 +258,8 @@ for i = 1:length(theta_intervals)
                 % angle
                 subplot(2,3,3)
                 histogram(abs(d_real(real_ind)),'Normalization','probability','FaceAlpha',0.8); hold on;
+                xlim([0 4])
+                ylim([0 1])
                 xlabel('displacement (\mum)')
                 ylabel('probability')
                 title('real displacement magnitudes')
@@ -284,14 +286,14 @@ for i = 1:length(theta_intervals)
                 % angle
                 subplot(2,3,6)
                 histogram(abs(d_sim(real_ind)),'Normalization','probability','FaceAlpha',0.8); hold on;
+                xlim([0 4])
+                ylim([0 1])
                 xlabel('displacement (\mum)')
                 ylabel('probability')
                 title('displacement magnitudes')
                 grid on
                 
                 filename = strcat(output_path, "solid_angle_plot", num2str(iter));
-%                 print(filename, '-dpng', '-bestfit');
-
                 saveas(fig, filename, 'png');
                 close(fig)
                 

@@ -12,13 +12,14 @@ close all
 
 %% Import data
 
-sim_path = '../gel_model/output/Gel3/';
+sim_path = '../gel_model/output/Gel3_small_mu/';
 data_path = '../data/Gel3/';
-output_path = "./Gel3_post/";
+output_path = "./Gel3_small_mu_post/";
 if ~exist(output_path, 'dir')
    mkdir(output_path)
 end
 
+% Initial surf or final surf vertices
 vertices = textread(strcat(data_path, 'gel_vertices.txt'));
 surf_vertices = textread(strcat(data_path, 'CytoD_vertices.txt'));
 faces = textread(strcat(data_path, 'CytoD_faces.txt'));

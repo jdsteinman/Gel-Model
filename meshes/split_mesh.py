@@ -4,7 +4,7 @@ import numpy as np
 path = "./"
 out_path = "../post/ellipsoid/"
 filename = "ellipsoid"
-physical_num = 1
+physical_num = 1  # physical number marking surface
 
 # Read mesh
 msh = meshio.read(path + filename + ".msh")
@@ -12,10 +12,10 @@ msh = meshio.read(path + filename + ".msh")
 # Get triangle and tet connectivity
 for cell in msh.cells:
     if cell.type == "triangle":
-        triangle_cells = cell.data
+        triangle_cells = cell.data  # 2D connectivity
 
     elif  cell.type == "tetra":
-        tetra_cells = cell.data
+        tetra_cells = cell.data     # 3D connectivity
 
 # Get physical labels
 for key in msh.cell_data_dict["gmsh:physical"].keys():
@@ -26,16 +26,17 @@ for key in msh.cell_data_dict["gmsh:physical"].keys():
 
 # Get surface cells
 surf_cells = np.column_stack((triangle_cells, triangle_data)) 
-surf_cells = surf_cells[surf_cells[:,-1] == physical_num]
+surf_cells = surf_cells[surf_cells[:,-1] == physical_num]    # Extract cells on surface
 surf_cells = surf_cells[:,0:-1]
 
 # Get Nodes
 nodes = msh.points # all nodes
 nodes_new = []
 surf_cells_new = surf_cells
-vert_map = {}
+vert_map = {}      # maps old nodes to new nodes
 num_vert = 0
 
+# Rewrite connectivity
 for i, face in enumerate(surf_cells_new):
     for j, vert in enumerate(face):
 
@@ -49,11 +50,11 @@ for i, face in enumerate(surf_cells_new):
 
 nodes_new = np.array(nodes_new)
 
-np.savetxt(out_path + "surf_cells.txt", surf_cells, delimiter=" ", fmt='%d')
-np.savetxt(out_path + "nodes.txt", nodes, delimiter=" ")
+# All vertices
+np.savetxt(out_path + "vertices.txt", nodes, delimiter=" ")
 
-np.savetxt(out_path + "surf_cells_new.txt", surf_cells_new, delimiter=" ", fmt='%d')
-np.savetxt(out_path + "nodes_new.txt", nodes_new, delimiter=" ")
+# Surface vertices and faces
+np.savetxt(out_path + "surf_vertices.txt", nodes_new, delimiter=" ")
+np.savetxt(out_path + "surf_faces.txt", surf_cells_new, delimiter=" ", fmt='%d')
 
-
-
+np.savetxt(out_path + "surf_vertices.txt", nodes_new, delimiter=" ")
