@@ -10,26 +10,16 @@ from dolfin import *
 import os
 
 """
-Extremely messy first-attempt at BC-simulation with Alex's mapping
+J&J's adaptation of bc_sim_xf.py
+Prescribes displacements at cell surface nodes
 
 TODO:
-- try-except block to save solution from last valid solver_call
-- resolutions shouldn't be hardcoded (merge w/ pre_volume.py)
-- better i/o
-- better documentation
-- switch from face bc's to vertex bc's
+- try-except block to save solution from last valid solver_call ??
 
 Prerequisites:
 - Gel Volume Mesh
 - Surface mesh
 - Displacements correspoding to surface mesh nodes
-
-How to run:
-- cd ./code
-- Type in the terminal: nohup python3 bc_sim_xf.py 100 &
-- After the code finishes, one shall find a result folder ./output/casename
-- Load solution.pvd in ParaView to visualize the field. 
-
 """
 
 ## Define objects and functions ===========================================================================
@@ -80,8 +70,7 @@ def solver_call(u, du, bcs):
     Ic = tr(C)
     J = det(F)
 
-    # mu = 325 * 10^12
-    mu = 325   # 2nd lame parameter (shear modulus)
+    mu = 325 * 10**12  # 2nd lame parameter (shear modulus)
     nu = 0.49   # Poisson's ratio
     E = 2*mu*(1+nu)
     lmbda = E*nu/((1 + nu)*(1 - 2*nu))   # 1st  lame parameter
@@ -97,11 +86,10 @@ def solver_call(u, du, bcs):
 
     return u, du
 
-
 ## Simulation Setup =======================================================================================
 path = "../data/Gel3/"
 chunks = int(100) 
-output_folder =  "./output/Gel3_small_mu/"
+output_folder =  "./output/Gel3/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
@@ -111,7 +99,6 @@ volume_number = 300
 
 cytod_surf = meshio.read(path + "cytod_uncentered_unpca_surface" + ".xdmf")   # for disp mapping
 cytod_faces = cytod_surf.cells[0].data
-cytod_vol = meshio.read(path + "cytod_uncentered_unpca" + ".msh")   # for mesh function
 
 # Read volume mesh
 mesh = Mesh()

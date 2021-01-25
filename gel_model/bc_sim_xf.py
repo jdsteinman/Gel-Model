@@ -10,6 +10,7 @@ from dolfin import *
 import os
 
 """
+
 Extremely messy first-attempt at BC-simulation with Alex's mapping
 
 TODO:

@@ -1,111 +1,231 @@
 import os
 import numpy as np
+import level_sets as ls
 from dolfin import *
 from matplotlib import pyplot as plt
+from pyevtk.hl import unstructuredGridToVTK
+from pyevtk.vtk import VtkTriangle
 
-# Optimization options for the form compiler
-parameters["form_compiler"]["cpp_optimize"] = True
+"""
+Fenics simulation of ellipsoidal model with functionally graded gel
 
-# Read mesh and define function space
-ipath = "../meshes/"
-opath = "./output/ellipsoid/"
+- mu(r) = mu_bulk * (r/r_max) ** k
+    - k detrmines shape of profile:
+        - k = 0:     uniform 
+        - 0 < k < 1: concave
+        - k = 1:     linear
+        - k > 1:     convex
+- outputs:
+    - displacement, gradient, and Jacobian fields (XDMF)
+    - displacement on isosurfaces (VTK)
+    - displacement at each vertex (txt)
+    - summary of simulation parameters (txt)
+""" 
+
+## Functions and Class Definitions =========================================================
+def normalize(a):
+    ss = np.sum(a**2, axis=1)**0.5
+    a = a / ss[:, np.newaxis]
+    return a
+
+class shear_modulus(UserExpression):
+    def __init__(self, vert, conn, **kwargs):
+        super().__init__(**kwargs)
+        self._vert = vert  # surface vertices
+        self._conn = conn  # surface connectivity
+        self._norm = np.zeros(vert.shape, dtype = vert.dtype)
+        self.calculate_normals()
+
+    def set_params(self, mu_bulk, k, rmax):    
+        self._mu = mu_bulk
+        self._k = k
+        self._rmax = rmax
+
+    def calculate_normals(self):
+        # Face coordinates
+        tris = self._vert[self._conn]
+
+        # Face normals
+        n = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
+
+        # Normalize face normals
+        n = normalize(n)
+
+        # Vertex normal = sum of adjacent face normals
+        self._norm[ self._conn[:,0] ] += n
+        self._norm[ self._conn[:,1] ] += n
+        self._norm[ self._conn[:,2] ] += n
+
+        # Normalize vertex normals
+        self._norm = normalize(self._norm)
+
+    def eval(self, value, x):
+        px = np.array([x[0], x[1], x[2]])
+
+        # Distance to surface
+        r = px - self._vert
+        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
+        r = np.amin(r)
+
+        value[0] = self._mu*(r/self._rmax)**self._k
+
+    def value_shape(self):
+        return ()
+
+def solver_call(u, du, bcs, mu, lmbda):
+
+    # Kinematics
+    B = Constant((0, 0, 0))  # Body force per unit volume
+    T = Constant((0, 0, 0))  # Traction force on the boundary
+    d = u.geometric_dimension()
+    I = Identity(d)             # Identity tensor
+    F = I + grad(u)             # Deformation gradient
+    C = F.T*F                   # Right Cauchy-Green tensor
+
+    # Invariants of deformation tensors
+    Ic = tr(C)
+    Jac  = det(F)
+
+    ## Elasticity parameters
+    lmbda = 1.5925 * 10**16
+
+    # Stored strain energy density (compressible neo-Hookean model)
+    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
+
+    # Total potential energy
+    Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
+
+    # Compute first variation of Pi (directional derivative about u in the direction of v)
+    F = derivative(Pi, u, w)
+    J = derivative(F, u, du)
+
+    # Create nonlinear variational problem and solve
+    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
+    solver = NonlinearVariationalSolver(problem)
+    solver.solve()
+
+    return u, du, Jac
+
+## Simulation Setup ================================================================================
+
+# Files
+mesh_path = "../meshes/"
+output_folder = "./output/func_grad/"
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
+tag = "_k_1"
+
+# Meshes
 mesh = Mesh()
-with XDMFFile(ipath + "ellipsoid_tetra.xdmf") as infile:
+with XDMFFile(mesh_path + "ellipsoid_tetra.xdmf") as infile:
     infile.read(mesh)
 
-# Outer surfaces
+surf_vert = np.loadtxt("../post/ellipsoid/surf_vertices.txt")
+surf_conn = np.loadtxt("../post/ellipsoid/surf_faces.txt").astype('int64')
+
+# Function space    
+V = VectorFunctionSpace(mesh, "Lagrange", 1)
+
+# Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile(ipath + "ellipsoid_triangle.xdmf") as infile:
+with XDMFFile(mesh_path + "ellipsoid_triangle.xdmf") as infile:
     infile.read(mvc, "triangle")
 
 mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
-V = VectorFunctionSpace(mesh, "Lagrange", 1)
+
+outer_number = 200
+inner_number = 201
+volume_number = 300
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-# u_0 = Expression(("a*x[0]","b*x[1]","c*x[2]"), degree=1, a = 0.05, b = .05, c = -.1)
-u_0 = Expression(("a*x[0]*1.5/11.5","x[1]*1.5/7.6","x[2]*3.5/18.75"), degree=1, a = 0.05, b = .05, c = -.1)
+u_0 = Expression(("a*x[0]/11.5", "b*x[1]/7.6","c*x[2]/18.75"), degree=1, a = 1, b = 1, c = -2)
 
-bc1 = DirichletBC(V, u_0, mf, 1)  # inner bc
-bc2 = DirichletBC(V, zero, mf, 2) # outer bc
+bc1 = DirichletBC(V, u_0, mf, inner_number)  # inner bc
+bc2 = DirichletBC(V, zero, mf, outer_number) # outer bc
 bcs = [bc1, bc2]
 
 # Define functions
-du, w = TrialFunction(V), TestFunction(V)      # Incremental displacement
-u  = Function(V, name="disp")                  # Displacement from previous iteration
-b  = Constant((0, 0, 0))  # Body force per unit volume
-h  = Constant((0, 0, 0))  # Traction force on the boundary
+du, w = TrialFunction(V), TestFunction(V)     # Incremental displacement
+u = Function(V, name="disp" + tag)            # Displacement from previous iteration
 
-# Kinematics
-d = u.geometric_dimension()
-I = Identity(d)             # Identity tensor
-F = I + grad(u)             # Deformation gradient
-C = F.T*F                   # Right Cauchy-Green tensor
+lmbda = 1.5925 * 10**16
+mu_bulk = 325 * 10**12  # Bulk Modulus
+k = 1
+rmax = np.amax(mesh.coordinates())
+print(rmax)
+mu = shear_modulus(surf_vert, surf_conn)
+mu.set_params(k, mu_bulk, rmax)
 
-# Invariants of deformation tensors
-Ic = tr(C)
-J  = det(F)
+u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 
-## Elasticity parameters
-mu = 325*10^12
-nu = 0.49
-E = 2*mu*(1+nu)
-lmbda = E*nu/((1 + nu)*(1 - 2*nu))
+## Isosurfaces ====================================================================================
 
-# Stored strain energy density (compressible neo-Hookean model)
-psi = (mu/2)*(Ic - 3) - mu*ln(J) + (lmbda/2)*(ln(J))**2
+npoints = np.shape(surf_vert)[0]
+ncells = np.shape(surf_conn)[0]
 
-# Total potential energy
-Pi = psi*dx - dot(b, u)*dx - dot(h, u)*ds
+sets = [1, 5, 10, 25]
+iso_points = ls.gen_sets(sets, surf_vert)  # from other file
 
-# Compute first variation of Pi (directional derivative about u in the direction of v)
-F = derivative(Pi, u, w)
+for s in sets:
+    points = iso_points[str(s)]
 
-# Compute Jacobian of F
-J = derivative(F, u, du)
+    # Data
+    disp = np.array([u(p) for p in points])
+    ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
+    ux = np.ascontiguousarray(ux, dtype=np.float32)
+    uy = np.ascontiguousarray(uy, dtype=np.float32)
+    uz = np.ascontiguousarray(uz, dtype=np.float32)
 
-# Create nonlinear variational problem and solve
-problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
-solver = NonlinearVariationalSolver(problem)
-solver.solve()
+    u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
 
-# Compute gradient
-grad_u = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)))
-# grad_u_x, grad_u_y = grad_u.split(deepcopy=True)
+    x = points[:,0]
+    y = points[:,1]
+    z = points[:,2]
 
-# Evaluate at bead locations
-u.set_allow_extrapolation(True)
-beads_init = np.genfromtxt("../data/Gel3/beads_init.txt", delimiter=" ")
-beads_final = np.genfromtxt("../data/Gel3/beads_final.txt", delimiter=" ")
-real_disp = beads_final - beads_init
+    conn = surf_conn.ravel()
 
-x_c = np.array([72.2393420333335, 72.9653489566665, 46.8100199433333])
-x_c.shape = (1,3)
-x_c = np.repeat(x_c, np.shape(beads_init)[0], axis=(0))
+    ctype = np.zeros(ncells)
+    ctype[:] = VtkTriangle.tid
 
-beads_init = beads_init - x_c
-beads_disp = np.array([u(p) for p in beads_init])
-beads_final = beads_init + beads_disp
-np.savetxt(opath + "ellipsoid_beads_init.txt", beads_disp, delimiter=" ")
-np.savetxt(opath + "ellipsoid_beads_disp.txt", beads_disp, delimiter=" ")
+    offset = 3 * (np.arange(ncells, dtype='int64') + 1)
 
-# Calculate Error
-rss = np.sqrt(np.sum(np.square(real_disp - beads_disp), 0) )
-r = np.corrcoef(real_disp.T, beads_disp.T)
+    unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn, offsets=offset, cell_types = ctype, 
+    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag})
 
-# Save solution in VTK format
-disp_file = File(opath + "displacement.pvd")
-disp_file << u
 
-grad_file = File(opath + "gradient.pvd")
-grad_file << grad_u
+## Other outputs ========================================================================================================
+
+# Compute gradient and Jacobian
+grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+grad_u.rename("grad" + tag, "displacement gradient")
+
+Jac_proj = project(Jac, FunctionSpace(mesh, "DG", 0))
+Jac_proj.rename("jac" + tag + tag, "Jacobian")
+
+# Save solution in XDMF format
+disp_file = XDMFFile(output_folder + "displacement" + tag + ".xdmf")
+disp_file.write(u)
+
+grad_file = XDMFFile(output_folder + "gradient" + tag + ".xdmf")
+grad_file.write(grad_u)
+
+jac_file = XDMFFile(output_folder + "jacobian" + tag + ".xdmf")
+jac_file.write(Jac_proj)
 
 # Tabulate dof coordinates
 u_arr = u.compute_vertex_values()  # 1-d numpy array
 length = np.shape(u_arr)[0]
 u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
 
-# Save solution
-np.savetxt(opath + "vertex_disp.txt", u_arr, delimiter=" ")
+# Save txt solution
+np.savetxt(output_folder + "displacement" + tag + ".txt", u_arr, delimiter=" ")
 
-#try saving in xdmf format instead
+# Profile expression
+f = open(output_folder + "profile.txt", "w+")
+f.write("mu(r) = mu_bulk * (r/r_max) ** k")
+f.write("\nk = " + str(k))
+f.write("\nmu_bulk = " + str(mu_bulk))
+f.write("\nlambda = " + str(lmbda))
+f.write("\rmax = " + str(rmax))
+f.close()

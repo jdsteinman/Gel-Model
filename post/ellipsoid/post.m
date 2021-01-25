@@ -4,34 +4,30 @@ clc
 clear all
 close all
 
+% this code plots the displacement vs distance from cell surface data for
+% 3D TFM experiments in solid angles around the cell
+
 % Written by: John Steinman
 
 
 %% Import data
 
-sim_path = '../gel_model/output/Gel3_real/';
-data_path = '../data/Gel3/';
+sim_path = '../../gel_model/output/func_grad/';
 output_file  = 'for_paraview.csv';
-output_path = "./Gel3_real/";
+output_path = "./";
 if ~exist(output_path, 'dir')
    mkdir(output_path)
 end
 
 % Initial surf or final surf vertices
-gel_vertices = textread(strcat(data_path, 'gel_vertices.txt'));
-surf_vertices = textread(strcat(data_path, 'CytoD_vertices.txt'));
-faces = textread(strcat(data_path, 'CytoD_faces.txt'));
-% faces = faces+1;
+vertices = textread(strcat('vertices.txt'));
+surf_vertices = textread(strcat('surf_vertices.txt'));
+faces = textread(strcat('surf_faces.txt'));
+faces = faces+1;
 
 % Simulation
-displacements = textread(strcat(sim_path, 'sim_vertex_disp.txt')); 
-initial = gel_vertices;
-final = initial + displacements;
-
-% Experimental
-% initial = textread(strcat(data_path, 'beads_init.txt')); 
-% final = textread(strcat(data_path, 'beads_final.txt'));
-% displacements = final-initial;
+initial = vertices;
+displacements = textread(strcat(sim_path, 'ellipsoid_disp.txt')); 
 
 
 %% Compute unit normal vectors at the cell vertices
