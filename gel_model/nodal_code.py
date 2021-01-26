@@ -14,7 +14,7 @@ J&J's adaptation of bc_sim_xf.py
 Prescribes displacements at cell surface nodes
 
 TODO:
-- try-except block to save solution from last valid solver_call ??
+- Does Gel3 data domain match our mesh?
 
 Prerequisites:
 - Gel Volume Mesh
@@ -87,8 +87,9 @@ def solver_call(u, du, bcs):
     return u, du
 
 ## Simulation Setup =======================================================================================
-path = "../data/Gel3/"
 chunks = int(100) 
+data_path = "../data/Gel3/"
+mesh_path = "../meshes/Gel3/"
 output_folder =  "./output/Gel3/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
@@ -97,17 +98,17 @@ outer_number = 200
 inner_number = 201
 volume_number = 300
 
-cytod_surf = meshio.read(path + "cytod_uncentered_unpca_surface" + ".xdmf")   # for disp mapping
+cytod_surf = meshio.read(mesh_path + "cytod_uncentered_unpca_surface" + ".xdmf")   # for disp mapping
 cytod_faces = cytod_surf.cells[0].data
 
 # Read volume mesh
 mesh = Mesh()
-with XDMFFile(path + "cytod_uncentered_unpca_tetra.xdmf") as infile:
+with XDMFFile(mesh_path + "cytod_uncentered_unpca_tetra.xdmf") as infile:
     infile.read(mesh)
 
 # Get surface numbers
 mvc = MeshValueCollection("size_t", mesh, 2)
-with XDMFFile(path + "cytod_uncentered_unpca_triangle.xdmf") as infile:
+with XDMFFile(mesh_path + "cytod_uncentered_unpca_triangle.xdmf") as infile:
     infile.read(mvc, "triangle")    # store physical numbers
 
 # Mesh Functions
@@ -117,7 +118,7 @@ subdomains.set_all(0)
 
 # Read displacements
 surf_mesh1_midpoints = create_surf_midpoints(cytod_surf)
-vert_disp = pd.read_csv(path + "displacements_cytod_to_normal_uncentered_unpca.csv",
+vert_disp = pd.read_csv(data_path + "displacements_cytod_to_normal_uncentered_unpca.csv",
                         header=None).values
 vert_disp = vert_disp/chunks
 midpoint_disp = np.zeros((cytod_faces.shape[0], 3)) # create an array #faces by 3

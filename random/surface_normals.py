@@ -8,16 +8,10 @@ def normalize(a):
     a = a / ss[:, np.newaxis]
     return a
 
-# Read mesh
-# mesh_path = "../meshes/"
-# surf_mesh = meshio.read(mesh_path + "ellipsoid_surface_triangle.xdmf")
-# surf_vert = surf_mesh.points
-# for cell in surf_mesh.cells:
-#     if cell.type == "triangle":
-#         surf_conn = cell.data
-
-surf_vert = np.loadtxt("../post/ellipsoid/surf_vertices.txt")
-surf_conn = np.loadtxt("../post/ellipsoid/surf_faces.txt").astype('int64')
+mesh_path = "../meshes/ellipsoid/"
+surf_mesh = meshio.read(mesh_path + "ellipsoid_surface.xdmf")
+surf_vert = np.array(surf_mesh.points)
+surf_conn = np.array(surf_mesh.cells[0].data, dtype="int64")
 
 # Face coordinates
 tris = surf_vert[surf_conn]
@@ -36,7 +30,6 @@ vnorm[ surf_conn[:,2] ] += fnorm
 
 # Normalize vertex normals
 vnorm = normalize(vnorm)
-
 
 # VTK
 ncells = np.size(surf_conn,0)
@@ -62,7 +55,7 @@ offset = 3 * (np.arange(ncells) + 1)
 ctype = np.zeros(ncells)
 ctype[:] = VtkTriangle.tid
 
-unstructuredGridToVTK("face_normals_test", x, y, z, connectivity=conn.astype('float64'), offsets=offset.astype('float64'), cell_types = ctype,
+unstructuredGridToVTK("face_normals", x, y, z, connectivity=conn.astype('float64'), offsets=offset.astype('float64'), cell_types = ctype,
                         cellData={"nx" : nx, "ny" : ny, "nz" : nz}, pointData={"nx" : vx, "ny" : vy, "nz" : vz})
 
 

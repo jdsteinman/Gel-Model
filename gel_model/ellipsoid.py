@@ -1,4 +1,5 @@
 import os
+import meshio
 import numpy as np
 import level_sets as ls
 from dolfin import *
@@ -31,8 +32,8 @@ def normalize(a):
 class shear_modulus(UserExpression):
     def __init__(self, vert, conn, **kwargs):
         super().__init__(**kwargs)
-        self._vert = vert  # surface vertices
-        self._conn = conn  # surface connectivity
+        self._vert = np.asarray(vert, dtype="float64")  # surface vertices
+        self._conn = np.asarray(conn, dtype="int64")    # surface connectivity
         self._norm = np.zeros(vert.shape, dtype = vert.dtype)
         self.calculate_normals()
 
@@ -60,14 +61,17 @@ class shear_modulus(UserExpression):
         self._norm = normalize(self._norm)
 
     def eval(self, value, x):
-        px = np.array([x[0], x[1], x[2]])
+        px = np.array([x[0], x[1], x[2]], dtype="float64")
 
         # Distance to surface
         r = px - self._vert
         r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
         r = np.amin(r)
 
-        value[0] = self._mu*(r/self._rmax)**self._k
+        if r < self._rmax:
+            value[0] = self._mu*(r/self._rmax)**self._k
+        else:
+            value[0] = self._mu
 
     def value_shape(self):
         return ()
@@ -109,7 +113,7 @@ def solver_call(u, du, bcs, mu, lmbda):
 ## Simulation Setup ================================================================================
 
 # Files
-mesh_path = "../meshes/"
+mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/func_grad/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
@@ -120,8 +124,9 @@ mesh = Mesh()
 with XDMFFile(mesh_path + "ellipsoid_tetra.xdmf") as infile:
     infile.read(mesh)
 
-surf_vert = np.loadtxt("../post/ellipsoid/surf_vertices.txt")
-surf_conn = np.loadtxt("../post/ellipsoid/surf_faces.txt").astype('int64')
+surf_mesh = meshio.read(mesh_path + "ellipsoid_surface.xdmf")
+surf_vert = np.array(surf_mesh.points)
+surf_conn = np.array(surf_mesh.cells[0].data)
 
 # Function space    
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
@@ -151,11 +156,11 @@ u = Function(V, name="disp" + tag)            # Displacement from previous itera
 
 lmbda = 1.5925 * 10**16
 mu_bulk = 325 * 10**12  # Bulk Modulus
-k = 1
-rmax = np.amax(mesh.coordinates())
-print(rmax)
+k = 1.
+rmax = np.amax(mesh.coordinates()) # side length of gel
+
 mu = shear_modulus(surf_vert, surf_conn)
-mu.set_params(k, mu_bulk, rmax)
+mu.set_params(mu_bulk, k, rmax)
 
 u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 

@@ -1,9 +1,16 @@
 import meshio
 import numpy as np
 
-path = "./"
-out_path = "../post/ellipsoid/"
+"""
+Extracts surface from a cell-in-bounding-box mesh.
+Outputs:
+    - surface mesh as .xdmf file
+    - vertices/connectivity as .txt files
+"""
+
+path = "./ellipsoid/"
 filename = "ellipsoid"
+
 physical_num = 201  # physical number marking surface
 
 # Read mesh
@@ -30,29 +37,30 @@ surf_cells = surf_cells[surf_cells[:,-1] == physical_num]    # Extract cells on 
 surf_cells = surf_cells[:,0:-1]
 
 # Get Nodes
-nodes = msh.points # all nodes
-nodes_new = []
-surf_cells_new = surf_cells
+vertices = msh.points # all nodes
+surf_vert = []
 vert_map = {}      # maps old nodes to new nodes
 num_vert = 0
 
 # Rewrite connectivity
-for i, face in enumerate(surf_cells_new):
+for i, face in enumerate(surf_cells):
     for j, vert in enumerate(face):
 
         if vert in vert_map:
-            surf_cells_new[i][j] = vert_map[vert]
+            surf_cells[i][j] = vert_map[vert]
         else:
-            vert_map[vert] = num_vert          # add key to map
-            surf_cells_new[i][j] = num_vert    
-            nodes_new.append(nodes[int(vert)]) # add node
+            vert_map[vert] = num_vert  # add key to map
+            surf_cells[i][j] = num_vert
+            surf_vert.append(vertices[int(vert)]) # add vert
             num_vert += 1
 
-nodes_new = np.array(nodes_new)
+surf_vert = np.array(surf_vert)
 
-# All vertices
-np.savetxt(out_path + "vertices.txt", nodes, delimiter=" ")
+# Save mesh
+surface_mesh = meshio.Mesh(points=surf_vert, cells=[("triangle", surf_cells)])
+meshio.write(path + filename +  "_surface.xdmf", surface_mesh)
 
-# Surface vertices and faces
-np.savetxt(out_path + "surf_vertices.txt", nodes_new, delimiter=" ")
-np.savetxt(out_path + "surf_faces.txt", surf_cells_new, delimiter=" ", fmt='%d')
+# txt output
+# np.savetxt(path + "vertices.txt", vertices, delimiter=" ")
+# np.savetxt(path + "surf_vertices.txt", surf_vert, delimiter=" ")
+# np.savetxt(path + "surf_faces.txt", surf_cells, delimiter=" ", fmt='%d')
