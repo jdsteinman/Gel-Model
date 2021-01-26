@@ -117,7 +117,7 @@ mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/func_grad/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
-tag = "_k_1"
+tag = "linear"
 
 # Meshes
 mesh = Mesh()
@@ -188,7 +188,7 @@ for s in sets:
     y = points[:,1]
     z = points[:,2]
 
-    conn = surf_conn.ravel()
+    conn = surf_conn.ravel().astype("int64")
 
     ctype = np.zeros(ncells)
     ctype[:] = VtkTriangle.tid
