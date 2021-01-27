@@ -76,6 +76,42 @@ class shear_modulus(UserExpression):
     def value_shape(self):
         return ()
 
+def dots(u, vert, conn):
+
+    # Check type
+    vert = np.asarray(vert, dtype="float64")
+    conn = np.asarray(conn, dtype="int64")
+
+    # Face coordinates
+    tris = vert[conn]
+    print(tris.shape)
+
+    # Face normals
+    fn = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
+
+    # Normalize face normals
+    fn = normalize(fn)
+
+    # Vertex normal = sum of adjacent face normals
+    n = np.zeros(vert.shape, dtype = vert.dtype)
+    n[ conn[:,0] ] += fn
+    n[ conn[:,1] ] += fn
+    n[ conn[:,2] ] += fn
+
+    # Normalize vertex normals
+    n = normalize(n)
+
+    # vertex displacement
+    disp = np.array([u(x) for x in vert])
+
+    # normalize row-wise
+    disp = normalize(disp)
+
+    # dot products
+    dp = np.sum(disp*n, axis=1)
+
+    return dp
+
 def solver_call(u, du, bcs, mu, lmbda):
 
     # Kinematics
@@ -173,17 +209,9 @@ sets = [1, 5, 10, 25]
 iso_points = ls.gen_sets(sets, surf_vert)  # from other file
 
 for s in sets:
-    points = iso_points[str(s)]
+    points = np.array(iso_points[str(s)], dtype="float64")
 
-    # Data
-    disp = np.array([u(p) for p in points])
-    ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
-    ux = np.ascontiguousarray(ux, dtype=np.float32)
-    uy = np.ascontiguousarray(uy, dtype=np.float32)
-    uz = np.ascontiguousarray(uz, dtype=np.float32)
-
-    u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
-
+    # VTK setup
     x = points[:,0]
     y = points[:,1]
     z = points[:,2]
@@ -195,8 +223,21 @@ for s in sets:
 
     offset = 3 * (np.arange(ncells, dtype='int64') + 1)
 
+    # Data
+    disp = np.array([u(p) for p in points])
+    ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
+    ux = np.ascontiguousarray(ux, dtype=np.float32)
+    uy = np.ascontiguousarray(uy, dtype=np.float32)
+    uz = np.ascontiguousarray(uz, dtype=np.float32)
+
+    # magnitude
+    u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
+
+    # dot product
+    u_dot = dots(u, points, surf_conn)
+
     unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn, offsets=offset, cell_types = ctype, 
-    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag})
+    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot})
 
 
 ## Other outputs ========================================================================================================
