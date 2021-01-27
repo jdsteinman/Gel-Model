@@ -33,32 +33,11 @@ class shear_modulus(UserExpression):
     def __init__(self, vert, conn, **kwargs):
         super().__init__(**kwargs)
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices
-        self._conn = np.asarray(conn, dtype="int64")    # surface connectivity
-        self._norm = np.zeros(vert.shape, dtype = vert.dtype)
-        self.calculate_normals()
 
     def set_params(self, mu_bulk, k, rmax):    
         self._mu = mu_bulk
         self._k = k
         self._rmax = rmax
-
-    def calculate_normals(self):
-        # Face coordinates
-        tris = self._vert[self._conn]
-
-        # Face normals
-        n = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
-
-        # Normalize face normals
-        n = normalize(n)
-
-        # Vertex normal = sum of adjacent face normals
-        self._norm[ self._conn[:,0] ] += n
-        self._norm[ self._conn[:,1] ] += n
-        self._norm[ self._conn[:,2] ] += n
-
-        # Normalize vertex normals
-        self._norm = normalize(self._norm)
 
     def eval(self, value, x):
         px = np.array([x[0], x[1], x[2]], dtype="float64")
@@ -84,7 +63,6 @@ def dots(u, vert, conn):
 
     # Face coordinates
     tris = vert[conn]
-    print(tris.shape)
 
     # Face normals
     fn = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
@@ -205,8 +183,8 @@ u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 npoints = np.shape(surf_vert)[0]
 ncells = np.shape(surf_conn)[0]
 
-sets = [1, 5, 10, 25]
-iso_points = ls.gen_sets(sets, surf_vert)  # from other file
+sets = [1, 2, 5, 10]
+iso_points = ls.mult_rad(sets, surf_vert)  # from other file
 
 for s in sets:
     points = np.array(iso_points[str(s)], dtype="float64")

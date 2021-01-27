@@ -21,7 +21,7 @@ def pol2cart(rho, phi, theta):
     z = rho * np.cos(phi)
     return(x, y, z)
 
-def gen_sets(inc, vertices):
+def add_to_rad(inc, vertices):
     sets = {}
     for i in inc:
         polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
@@ -30,3 +30,11 @@ def gen_sets(inc, vertices):
         sets[str(i)] = cart_vert
     return(sets)
 
+def mult_rad(inc, vertices):
+    sets = {}
+    for i in inc:
+        polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
+        polar_vert[:,0] *= i
+        cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
+        sets[str(i)] = cart_vert
+    return(sets)
