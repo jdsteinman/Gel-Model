@@ -61,6 +61,6 @@ surface_mesh = meshio.Mesh(points=surf_vert, cells=[("triangle", surf_cells)])
 meshio.write(path + filename +  "_surface.xdmf", surface_mesh)
 
 # txt output
-# np.savetxt(path + "vertices.txt", vertices, delimiter=" ")
-# np.savetxt(path + "surf_vertices.txt", surf_vert, delimiter=" ")
-# np.savetxt(path + "surf_faces.txt", surf_cells, delimiter=" ", fmt='%d')
+np.savetxt(path + "vertices.txt", vertices, delimiter=" ")
+np.savetxt(path + "surf_vertices.txt", surf_vert, delimiter=" ")
+np.savetxt(path + "surf_faces.txt", surf_cells, delimiter=" ", fmt='%d')
