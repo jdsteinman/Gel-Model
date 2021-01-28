@@ -9,22 +9,22 @@ close all
 
 %% Import data
 
-sim_path = '../gel_model/output/Gel3_real/';
-data_path = '../data/Gel3/';
+sim_path = '../gel_model/output/func_grad/';
+mesh_path = '../meshes/ellipsoid/';
 output_file  = 'for_paraview.csv';
-output_path = "./Gel3_real/";
+output_path = "./ellipsoid/";
 if ~exist(output_path, 'dir')
    mkdir(output_path)
 end
 
 % Initial surf or final surf vertices
-gel_vertices = textread(strcat(data_path, 'gel_vertices.txt'));
-surf_vertices = textread(strcat(data_path, 'CytoD_vertices.txt'));
-faces = textread(strcat(data_path, 'CytoD_faces.txt'));
-% faces = faces+1;
+gel_vertices = textread(strcat(mesh_path, 'vertices.txt'));
+surf_vertices = textread(strcat(mesh_path, 'surf_vertices.txt'));
+faces = textread(strcat(mesh_path, 'surf_faces.txt'));
+faces = faces+1;
 
 % Simulation
-displacements = textread(strcat(sim_path, 'sim_vertex_disp.txt')); 
+displacements = textread(strcat(sim_path, 'displacementlinear.txt')); 
 initial = gel_vertices;
 final = initial + displacements;
 

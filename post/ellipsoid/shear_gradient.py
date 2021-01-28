@@ -19,7 +19,7 @@ for i, k in enumerate(K):
 
     ax.plot(x, y[i,:], label= "k = " + str(k), color = c[i])
 
-ax.set(xlabel=r"radius from cell surface ($\mu$m)", ylabel="Shear Modulus (Pa)", title="Shear Modulus Profiles\n y = $\mu$_bulk * (r/r_max) ** k")
+ax.set(xlabel=r"Distance from cell surface ($\mu$m)", ylabel="Shear Modulus (Pa)", title="Shear Modulus Profiles")
 ax.grid()
 ax.legend()
 
