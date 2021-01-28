@@ -1,7 +1,7 @@
 import os
 import meshio
 import numpy as np
-import level_sets as ls
+import post_tools as pt
 from dolfin import *
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
@@ -24,11 +24,6 @@ Fenics simulation of ellipsoidal model with functionally graded gel
 """ 
 
 ## Functions and Class Definitions =========================================================
-def normalize(a):
-    ss = np.sum(a**2, axis=1)**0.5
-    a = a / ss[:, np.newaxis]
-    return a
-
 class shear_modulus(UserExpression):
     def __init__(self, vert, conn, **kwargs):
         super().__init__(**kwargs)
@@ -54,41 +49,6 @@ class shear_modulus(UserExpression):
 
     def value_shape(self):
         return ()
-
-def dots(u, vert, conn):
-
-    # Check type
-    vert = np.asarray(vert, dtype="float64")
-    conn = np.asarray(conn, dtype="int64")
-
-    # Face coordinates
-    tris = vert[conn]
-
-    # Face normals
-    fn = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
-
-    # Normalize face normals
-    fn = normalize(fn)
-
-    # Vertex normal = sum of adjacent face normals
-    n = np.zeros(vert.shape, dtype = vert.dtype)
-    n[ conn[:,0] ] += fn
-    n[ conn[:,1] ] += fn
-    n[ conn[:,2] ] += fn
-
-    # Normalize vertex normals
-    n = normalize(n)
-
-    # vertex displacement
-    disp = np.array([u(x) for x in vert])
-
-    # normalize row-wise
-    disp = normalize(disp)
-
-    # dot products
-    dp = np.sum(disp*n, axis=1)
-
-    return dp
 
 def solver_call(u, du, bcs, mu, lmbda):
 
@@ -128,10 +88,10 @@ def solver_call(u, du, bcs, mu, lmbda):
 
 # Files
 mesh_path = "../meshes/ellipsoid/"
-output_folder = "./output/func_grad/"
+output_folder = "./output/convex/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
-tag = "linear"
+tag = "_convex"
 
 # Meshes
 mesh = Mesh()
@@ -170,7 +130,7 @@ u = Function(V, name="disp" + tag)            # Displacement from previous itera
 
 lmbda = 1.5925 * 10**16
 mu_bulk = 325 * 10**12  # Bulk Modulus
-k = 1.
+k = 2.
 rmax = np.amax(mesh.coordinates()) # side length of gel
 
 mu = shear_modulus(surf_vert, surf_conn)
@@ -183,8 +143,8 @@ u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 npoints = np.shape(surf_vert)[0]
 ncells = np.shape(surf_conn)[0]
 
-sets = [1, 2, 5, 10]
-iso_points = ls.mult_rad(sets, surf_vert)  # from other file
+sets = [1.2, 1.4, 1.6, 1.8, 2]
+iso_points = pt.mult_rad(sets, surf_vert)  # from other file
 
 for s in sets:
     points = np.array(iso_points[str(s)], dtype="float64")
@@ -212,10 +172,13 @@ for s in sets:
     u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
 
     # dot product
-    u_dot = dots(u, points, surf_conn)
+    u_dot = pt.dots(u, points, surf_conn)
+
+    # signed magnitude
+    s_mag = u_mag * np.abs(u_dot) / u_dot
 
     unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn, offsets=offset, cell_types = ctype, 
-    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot})
+    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})
 
 
 ## Other outputs ========================================================================================================
