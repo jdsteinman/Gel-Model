@@ -1,6 +1,7 @@
 import meshio
 import math
 import numpy as np
+import matplotlib.pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
 
@@ -84,6 +85,55 @@ def dots(u, vert, conn):
 
     return dp
 
+# Plots
+def adjacent_values(vals, q1, q3):
+    upper_adjacent_value = q3 + (q3 - q1) * 1.5
+    upper_adjacent_value = np.clip(upper_adjacent_value, q3, vals[-1])
+
+    lower_adjacent_value = q1 - (q3 - q1) * 1.5
+    lower_adjacent_value = np.clip(lower_adjacent_value, vals[0], q1)
+    return lower_adjacent_value, upper_adjacent_value
+
+def set_axis_style(ax, labels):
+    ax.get_xaxis().set_tick_params(direction='out')
+    ax.xaxis.set_ticks_position('bottom')
+    ax.set_xticks(np.arange(1, len(labels) + 1))
+    ax.set_xticklabels(labels)
+    ax.set_xlim(0.25, len(labels) + 0.75)
+    ax.set_xlabel('Isosurface multiplier')
+
+def plot_sets(disp, sets, output_folder):
+
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+
+    ax.set_title('Displacement on Isosurfaces')
+    ax.set_ylabel(r'Displacement ($\mu$m)')
+    parts = ax.violinplot(
+            disp, showmeans=False, showmedians=False,
+            showextrema=False)
+
+    for pc in parts['bodies']:
+        pc.set_facecolor('xkcd:pale teal')
+        pc.set_edgecolor('black')
+        pc.set_alpha(1)
+
+    quartile1, medians, quartile3 = np.percentile(disp, [25, 50, 75], axis=1)
+    whiskers = np.array([
+        adjacent_values(sorted_array, q1, q3)
+        for sorted_array, q1, q3 in zip(disp, quartile1, quartile3)])
+    whiskersMin, whiskersMax = whiskers[:, 0], whiskers[:, 1]
+
+    inds = np.arange(1, len(medians) + 1)
+    ax.scatter(inds, medians, marker='o', color='white', s=30, zorder=3)
+    ax.vlines(inds, quartile1, quartile3, color='dimgrey', linestyle='-', lw=5)
+    ax.vlines(inds, whiskersMin, whiskersMax, color='dimgrey', linestyle='-', lw=1)
+
+    labels = [str(s) for s in sets]
+    set_axis_style(ax, labels)
+
+    plt.savefig(output_folder + 'isoplots.png', bbox_inches='tight')
+
+# Grand Finale
 def level_sets(sets, vert, conn, u, output_folder="./"):
 
     # Format inputs
@@ -96,6 +146,7 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
 
     # Create level sets
     set_dict = mult_rad(sets, vert)
+    u_sets = []
 
     for s in sets:
         points = np.array(set_dict[str(s)], dtype="float64")
@@ -124,6 +175,7 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
 
         # magnitude
         u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
+        u_sets.append(u_mag)
 
         # dot product
         u_dot = dots(u, points, conn)
@@ -133,3 +185,6 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
 
         unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
         pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})
+    
+    plot_sets(u_sets, sets, output_folder)
+
