@@ -83,3 +83,53 @@ def dots(u, vert, conn):
     dp = np.sum(disp*n, axis=1)
 
     return dp
+
+def level_sets(sets, vert, conn, u, output_folder="./"):
+
+    # Format inputs
+    vert = np.asarray(vert, dtype="float64")
+    conn = np.asarray(conn, dtype="int64")
+
+    # number of points/cells
+    nvert = np.size(vert, 0)
+    ncells = np.size(conn, 0)
+
+    # Create level sets
+    set_dict = mult_rad(sets, vert)
+
+    for s in sets:
+        points = np.array(set_dict[str(s)], dtype="float64")
+
+        # x,y,z
+        x = points[:,0]
+        y = points[:,1]
+        z = points[:,2]
+
+        # cell types
+        ctype = np.zeros(ncells)
+        ctype[:] = VtkTriangle.tid
+
+        # ravel conenctivity
+        conn_ravel = conn.ravel().astype("int64")
+
+        # offset begins with 1
+        offset = 3 * (np.arange(ncells, dtype='int64') + 1)
+
+        # Data
+        disp = np.array([u(p) for p in points])
+        ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
+        ux = np.ascontiguousarray(ux, dtype=np.float32)
+        uy = np.ascontiguousarray(uy, dtype=np.float32)
+        uz = np.ascontiguousarray(uz, dtype=np.float32)
+
+        # magnitude
+        u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
+
+        # dot product
+        u_dot = dots(u, points, conn)
+
+        # signed magnitude
+        s_mag = u_mag * np.abs(u_dot) / u_dot
+
+        unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
+        pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})

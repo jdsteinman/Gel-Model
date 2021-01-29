@@ -139,46 +139,8 @@ mu.set_params(mu_bulk, k, rmax)
 u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 
 ## Isosurfaces ====================================================================================
-
-npoints = np.shape(surf_vert)[0]
-ncells = np.shape(surf_conn)[0]
-
 sets = [1.2, 1.4, 1.6, 1.8, 2]
-iso_points = pt.mult_rad(sets, surf_vert)  # from other file
-
-for s in sets:
-    points = np.array(iso_points[str(s)], dtype="float64")
-
-    # VTK setup
-    x = points[:,0]
-    y = points[:,1]
-    z = points[:,2]
-
-    conn = surf_conn.ravel().astype("int64")
-
-    ctype = np.zeros(ncells)
-    ctype[:] = VtkTriangle.tid
-
-    offset = 3 * (np.arange(ncells, dtype='int64') + 1)
-
-    # Data
-    disp = np.array([u(p) for p in points])
-    ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
-    ux = np.ascontiguousarray(ux, dtype=np.float32)
-    uy = np.ascontiguousarray(uy, dtype=np.float32)
-    uz = np.ascontiguousarray(uz, dtype=np.float32)
-
-    # magnitude
-    u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
-
-    # dot product
-    u_dot = pt.dots(u, points, surf_conn)
-
-    # signed magnitude
-    s_mag = u_mag * np.abs(u_dot) / u_dot
-
-    unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn, offsets=offset, cell_types = ctype, 
-    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})
+pt.level_sets(sets, surf_vert, surf_conn, u, output_folder)
 
 
 ## Other outputs ========================================================================================================
