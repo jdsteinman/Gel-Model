@@ -8,7 +8,7 @@
       <Geometry GeometryType="XYZ">
         <DataItem Dimensions="7854 3" Format="HDF">displacement_convex.h5:/Mesh/mesh/geometry</DataItem>
       </Geometry>
-      <Attribute Name="disp_convex" AttributeType="Vector" Center="Node">
+      <Attribute Name="dispconvex" AttributeType="Vector" Center="Node">
         <DataItem Dimensions="7854 3" Format="HDF">displacement_convex.h5:/VisualisationVector/0</DataItem>
       </Attribute>
     </Grid>

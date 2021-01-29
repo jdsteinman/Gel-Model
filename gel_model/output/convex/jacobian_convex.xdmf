@@ -8,7 +8,7 @@
       <Geometry GeometryType="XYZ">
         <DataItem Dimensions="7854 3" Format="HDF">jacobian_convex.h5:/Mesh/mesh/geometry</DataItem>
       </Geometry>
-      <Attribute Name="jac_convex_convex" AttributeType="Scalar" Center="Cell">
+      <Attribute Name="jac_convex" AttributeType="Scalar" Center="Cell">
         <DataItem Dimensions="37634 1" Format="HDF">jacobian_convex.h5:/VisualisationVector/0</DataItem>
       </Attribute>
     </Grid>
