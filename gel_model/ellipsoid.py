@@ -87,11 +87,11 @@ def solver_call(u, du, bcs, mu, lmbda):
 ## Simulation Setup ================================================================================
 
 # Files
+tag = "uniform"
 mesh_path = "../meshes/ellipsoid/"
-output_folder = "./output/convex/"
+output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
-tag = "_convex"
 
 # Meshes
 mesh = Mesh()
@@ -118,7 +118,7 @@ volume_number = 300
 
 # Define Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
-u_0 = Expression(("a*x[0]/11.5", "b*x[1]/7.6","c*x[2]/18.75"), degree=1, a = 1, b = 1, c = -2)
+u_0 = Expression(("a*x[0]/11.5", "b*x[1]/7.6","c*x[2]/18.75"), degree=1, a = 1, b = 1, c = -5)
 
 bc1 = DirichletBC(V, u_0, mf, inner_number)  # inner bc
 bc2 = DirichletBC(V, zero, mf, outer_number) # outer bc
@@ -130,7 +130,7 @@ u = Function(V, name="disp" + tag)            # Displacement from previous itera
 
 lmbda = 1.5925 * 10**16
 mu_bulk = 325 * 10**12  # Bulk Modulus
-k = 2.
+k = 0.
 rmax = np.amax(mesh.coordinates()) # side length of gel
 
 mu = shear_modulus(surf_vert, surf_conn)
@@ -142,24 +142,23 @@ u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 sets = [1.2, 1.4, 1.6, 1.8, 2]
 pt.level_sets(sets, surf_vert, surf_conn, u, output_folder)
 
-
 ## Other outputs ========================================================================================================
 
 # Compute gradient and Jacobian
 grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
-grad_u.rename("grad" + tag, "displacement gradient")
+grad_u.rename("grad_" + tag, "displacement gradient")
 
 Jac_proj = project(Jac, FunctionSpace(mesh, "DG", 0))
-Jac_proj.rename("jac" + tag + tag, "Jacobian")
+Jac_proj.rename("jac_" + tag, "Jacobian")
 
 # Save solution in XDMF format
-disp_file = XDMFFile(output_folder + "displacement" + tag + ".xdmf")
+disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
 disp_file.write(u)
 
-grad_file = XDMFFile(output_folder + "gradient" + tag + ".xdmf")
+grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
 grad_file.write(grad_u)
 
-jac_file = XDMFFile(output_folder + "jacobian" + tag + ".xdmf")
+jac_file = XDMFFile(output_folder + "jacobian_" + tag + ".xdmf")
 jac_file.write(Jac_proj)
 
 # Tabulate dof coordinates

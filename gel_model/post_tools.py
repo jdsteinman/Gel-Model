@@ -183,7 +183,7 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
         # signed magnitude
         s_mag = u_mag * np.abs(u_dot) / u_dot
 
-        unstructuredGridToVTK(output_folder + "level_set_" + str(s), x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
+        unstructuredGridToVTK(output_folder + "set_" + str(s), x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
         pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})
     
     plot_sets(u_sets, sets, output_folder)
