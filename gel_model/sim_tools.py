@@ -203,7 +203,7 @@ def toDataFrame(points, u=None, mu=None, grad_u=None, C=None):
     npoints = np.size(points, 0)
 
     x, y, z = np.hsplit(points, 3)
-    r = np.sum((x-x[0])**2, axis=1)**0.5
+    r = np.sum((points-points[0])**2, axis=1)**0.5
     data["x"] = x.flatten()
     data["y"] = y.flatten()
     data["z"] = z.flatten()
