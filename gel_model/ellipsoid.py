@@ -182,29 +182,6 @@ midpoints = get_midpoints(surf_mesh)
 midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
 face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
 
-x, y, z = surf_vert[:,0], surf_vert[:,1], surf_vert[:,2]
-ux, uy, uz = vert_disp[:,0], vert_disp[:,1], vert_disp[:,2]
-x = np.ascontiguousarray(x, dtype=np.float32)
-y = np.ascontiguousarray(y, dtype=np.float32)
-z = np.ascontiguousarray(z, dtype=np.float32)
-ux = np.ascontiguousarray(ux, dtype=np.float32)
-uy = np.ascontiguousarray(uy, dtype=np.float32)
-uz = np.ascontiguousarray(uz, dtype=np.float32)
-
-# cell types
-ncells = surf_conn.shape[0]
-ctype = np.zeros(ncells)
-ctype[:] = VtkTriangle.tid
-
-# ravel conenctivity
-conn_ravel = surf_conn.ravel().astype("int64")
-
-# offset begins with 1
-offset = 3 * (np.arange(ncells, dtype='int64') + 1)
-
-unstructuredGridToVTK(output_folder + "bc", x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
-    pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz})
-
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
 bcs.append(DirichletBC(V, zero, mf, outer_number))
