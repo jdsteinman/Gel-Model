@@ -202,7 +202,7 @@ for i in range(chunks):
     print("----------------")
 
     ## Inner BC
-    face2disp_dict = dict(zip(face_map, midpoint_disp))
+    face2disp_dict = dict(zip(face_map, midpoint_disp*(i+1)))
     boundary_func = inner_bc(mesh, face2disp_dict)
     bcs[-1] = DirichletBC(V, boundary_func, mf, inner_number)
 
