@@ -52,7 +52,6 @@ class shear_modulus(UserExpression):
     def value_shape(self):
         return ()
 
-## Define objects and functions ===========================================================================
 class inner_bc(UserExpression):
     def __init__(self, mesh, face2disp_dict, **kwargs):
         self.mesh = mesh 
