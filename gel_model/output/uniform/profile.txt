@@ -1,4 +1,0 @@
-mu(r) = mu_bulk * (r/r_max) ** k
-k = 0.0
-mu_bulk = 325000000000000
-lambda = 1.5925e+16max = 150.0
