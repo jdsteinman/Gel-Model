@@ -1,15 +1,15 @@
 import os
 import meshio
 import numpy as np
-import post_tools as pt
+import pandas as pd
 from dolfin import *
+from sim_tools import level_sets, toDataFrame
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
 
 """
 Fenics simulation of ellipsoidal model with functionally graded gel
-
 - mu(r) = mu_bulk * (r/r_max) ** k
     - k detrmines shape of profile:
         - k = 0:     uniform 
@@ -43,16 +43,16 @@ class shear_modulus(UserExpression):
         r = np.amin(r)
 
         if r < self._rmax:
-            value[0] = self._mu*(r/self._rmax)**self._k
+            # value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
+            value[0] = self._mu*0.5 + self._k*.01   # Step function
         else:
-            value[0] = self._mu
+            value[0] = self._mu * 1.01
 
     def value_shape(self):
         return ()
 
 def solver_call(u, du, bcs, mu, lmbda):
-
-    # Kinematics
+    ## Kinematics
     B = Constant((0, 0, 0))  # Body force per unit volume
     T = Constant((0, 0, 0))  # Traction force on the boundary
     d = u.geometric_dimension()
@@ -60,20 +60,17 @@ def solver_call(u, du, bcs, mu, lmbda):
     F = I + grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
 
-    # Invariants of deformation tensors
+    ## Invariants of deformation tensors
     Ic = tr(C)
     Jac  = det(F)
 
-    ## Elasticity parameters
-    lmbda = 1.5925 * 10**16
-
-    # Stored strain energy density (compressible neo-Hookean model)
+    ## Stored strain energy density (compressible neo-Hookean model)
     psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
 
-    # Total potential energy
+    ## Total potential energy
     Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
 
-    # Compute first variation of Pi (directional derivative about u in the direction of v)
+    ## Compute first variation of Pi (directional derivative about u in the direction of v)
     F = derivative(Pi, u, w)
     J = derivative(F, u, du)
 
@@ -84,16 +81,16 @@ def solver_call(u, du, bcs, mu, lmbda):
 
     return u, du, Jac
 
-## Simulation Setup ================================================================================
+### Simulation Setup ================================================================================
 
-# Files
-tag = "uniform"
+## Files
+tag = "step"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# Meshes
+## Meshes
 mesh = Mesh()
 with XDMFFile(mesh_path + "ellipsoid_tetra.xdmf") as infile:
     infile.read(mesh)
@@ -102,21 +99,31 @@ surf_mesh = meshio.read(mesh_path + "ellipsoid_surface.xdmf")
 surf_vert = np.array(surf_mesh.points)
 surf_conn = np.array(surf_mesh.cells[0].data)
 
-# Function space    
+## Function space    
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
-# Subdomain markers
+## Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
 with XDMFFile(mesh_path + "ellipsoid_triangle.xdmf") as infile:
     infile.read(mvc, "triangle")
 
 mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
-
 outer_number = 200
 inner_number = 201
 volume_number = 300
 
-# Define Boundary Conditions
+# Material parameters
+nu = 0.4                         # Poisson's ratio
+mu_bulk = 325 * 10**12           # Bulk Modulus
+lmbda = 2*nu*mu_bulk / (1-2*nu)  # 1st Lame Parameter
+k = 0.                           # profile shape
+l = np.amax(mesh.coordinates())  # side length of gel
+rmax = 10                        # graded model region
+
+mu = shear_modulus(surf_vert, surf_conn)
+mu.set_params(mu_bulk, k, rmax)
+
+##  Boundary Conditions
 zero = Constant((0.0, 0.0, 0.0))
 u_0 = Expression(("a*x[0]/11.5", "b*x[1]/7.6","c*x[2]/18.75"), degree=1, a = 1, b = 1, c = -5)
 
@@ -124,52 +131,51 @@ bc1 = DirichletBC(V, u_0, mf, inner_number)  # inner bc
 bc2 = DirichletBC(V, zero, mf, outer_number) # outer bc
 bcs = [bc1, bc2]
 
-# Define functions
-du, w = TrialFunction(V), TestFunction(V)     # Incremental displacement
-u = Function(V, name="disp" + tag)            # Displacement from previous iteration
+## Functions
+du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
+u = Function(V)                           
 
-lmbda = 1.5925 * 10**16
-mu_bulk = 325 * 10**12  # Bulk Modulus
-k = 0.
-rmax = np.amax(mesh.coordinates()) # side length of gel
-
-mu = shear_modulus(surf_vert, surf_conn)
-mu.set_params(mu_bulk, k, rmax)
-
+## Run Sim ==================================================================================
 u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
+u.set_allow_extrapolation(True) # Temp fix for evaluating on surface
 
-## Isosurfaces ====================================================================================
-sets = [1.2, 1.4, 1.6, 1.8, 2]
-pt.level_sets(sets, surf_vert, surf_conn, u, output_folder)
+# Deformation
+d = u.geometric_dimension()
+I = Identity(d)      # Identity tensor
+F = I + grad(u)      # Deformation gradient
+C = F.T*F            # Right Cauchy-Green tensor
 
-## Other outputs ========================================================================================================
-
-# Compute gradient and Jacobian
+# Projections
 grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
-grad_u.rename("grad_" + tag, "displacement gradient")
+mu = project(mu, FunctionSpace(mesh, "DG", 1))
 
-Jac_proj = project(Jac, FunctionSpace(mesh, "DG", 0))
-Jac_proj.rename("jac_" + tag, "Jacobian")
+### Outputs ==================================================================================
 
-# Save solution in XDMF format
+## Isosurfaces
+# sets = [1, 1.2, 1.4, 1.6, 1.8, 2]
+# level_sets(sets, surf_vert, surf_conn, u, output_folder)
+
+## Table Outputs
+npoints = 100
+zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
+yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
+
+zdata = toDataFrame(axis, u, mu, grad_u)
+ydata = toDataFrame(axis, u, mu, grad_u)
+
+zdata.to_csv(output_folder+"data_z.csv", sep=",")
+ydata.to_csv(output_folder+"data_y.csv", sep=",")
+
+# XDMF Outputs
 disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
+u.rename("u","displacement")
 disp_file.write(u)
 
-grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
-grad_file.write(grad_u)
+mu_file = XDMFFile(output_folder + "mu_" + tag + ".xdmf")
+mu.rename("mu", "shear_modulus")
+mu_file.write(mu)
 
-jac_file = XDMFFile(output_folder + "jacobian_" + tag + ".xdmf")
-jac_file.write(Jac_proj)
-
-# Tabulate dof coordinates
-u_arr = u.compute_vertex_values()  # 1-d numpy array
-length = np.shape(u_arr)[0]
-u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
-
-# Save txt solution
-np.savetxt(output_folder + "displacement" + tag + ".txt", u_arr, delimiter=" ")
-
-# Profile expression
+## Save Simulation Parameters
 f = open(output_folder + "profile.txt", "w+")
 f.write("mu(r) = mu_bulk * (r/r_max) ** k")
 f.write("\nk = " + str(k))

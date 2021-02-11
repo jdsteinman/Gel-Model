@@ -1,20 +1,25 @@
 import meshio
 import math
+import pandas as pd
 import numpy as np
+import numpy.linalg as LA
 import matplotlib.pyplot as plt
+import seaborn as sb
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
+from dolfin import Function as fenicsFunc
 
 """
-Contains functions to create level sets
+Functions to create level sets, calculate surface normals,
+plot stuff, and more.
 """
-# Normalize an array of 3-component vectors
+## Normalize an array of 3-component vectors
 def normalize(a):
     ss = np.sum(a**2, axis=1)**0.5
     a = a / ss[:, np.newaxis]
     return a
 
-# Coordinate conversions
+## Coordinate conversions
 def cart2pol(x, y, z):
     r = np.sqrt(x**2 + y**2)
     rho = np.sqrt(x**2 + y**2 + z**2)
@@ -28,7 +33,7 @@ def pol2cart(rho, phi, theta):
     z = rho * np.cos(phi)
     return(x, y, z)
 
-# Convert to polar, add r + k, convert back to cartesian
+## Convert to polar, add r + k, convert back to cartesian
 def add_to_rad(inc, vertices):
     sets = {}
     for i in inc:
@@ -38,7 +43,7 @@ def add_to_rad(inc, vertices):
         sets[str(i)] = cart_vert
     return(sets)
 
-# Convert to polar, multiply r*k, convert back to cartesian
+## Convert to polar, multiply r*k, convert back to cartesian
 def mult_rad(inc, vertices):
     sets = {}
     for i in inc:
@@ -48,10 +53,8 @@ def mult_rad(inc, vertices):
         sets[str(i)] = cart_vert
     return(sets)
 
-# Returns dot product of displacement vectors with surface outward normal
-def dots(u, vert, conn):
-
-    # Check type
+def get_surface_normals(vert, conn):
+     # Check type
     vert = np.asarray(vert, dtype="float64")
     conn = np.asarray(conn, dtype="int64")
 
@@ -59,7 +62,7 @@ def dots(u, vert, conn):
     tris = vert[conn]
 
     # Face normals
-    fn = np.cross( tris[:,1,:] - tris[:,0,:]  , tris[:,2,:] - tris[:,0,:] )
+    fn = np.cross(tris[:,1,:] - tris[:,0,:], tris[:,2,:] - tris[:,0,:] )
 
     # Normalize face normals
     fn = normalize(fn)
@@ -71,21 +74,23 @@ def dots(u, vert, conn):
     n[ conn[:,2] ] += fn
 
     # Normalize vertex normals
-    # Mult by -1 to make them point outward
+    # Mult by -1 to make them point outward??
     n = normalize(n) * -1
 
-    # vertex displacement
-    disp = np.array([u(x) for x in vert])
+    return n
+
+## Returns dot product of displacement vectors with surface outward normal
+def dots(disp, norms):
 
     # normalize row-wise
     disp = normalize(disp)
 
     # dot products
-    dp = np.sum(disp*n, axis=1)
+    dp = np.sum(disp*norms, axis=1)
 
     return dp
 
-# Plots
+## Level Set Plots
 def adjacent_values(vals, q1, q3):
     upper_adjacent_value = q3 + (q3 - q1) * 1.5
     upper_adjacent_value = np.clip(upper_adjacent_value, q3, vals[-1])
@@ -133,7 +138,7 @@ def plot_sets(disp, sets, output_folder):
 
     plt.savefig(output_folder + 'isoplots.png', bbox_inches='tight')
 
-# Grand Finale
+##Grand Finale
 def level_sets(sets, vert, conn, u, output_folder="./"):
 
     # Format inputs
@@ -177,8 +182,11 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
         u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
         u_sets.append(u_mag)
 
+        # normals
+        normals = get_surface_normals(points, conn)
+
         # dot product
-        u_dot = dots(u, points, conn)
+        u_dot = dots(disp, normals)
 
         # signed magnitude
         s_mag = u_mag * np.abs(u_dot) / u_dot
@@ -188,3 +196,60 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
     
     plot_sets(u_sets, sets, output_folder)
 
+## Data Output
+def toDataFrame(points, u=None, mu=None, grad_u=None, C=None):
+
+    data=pd.DataFrame()
+    npoints = np.size(points, 0)
+
+    x, y, z = np.hsplit(points, 3)
+    r = np.sum((x-x[0])**2, axis=1)**0.5
+    data["x"] = x.flatten()
+    data["y"] = y.flatten()
+    data["z"] = z.flatten()
+    data["r"] = r.flatten()
+
+    if u is not None:
+        u = np.array([u(p) for p in points])
+        ux, uy, uz = np.hsplit(u, 3)
+        mag = np.sqrt(ux**2 + uy**2 + uz**2)
+        data["ux"] = ux.flatten()
+        data["uy"] = uy.flatten()
+        data["uz"] = uz.flatten()
+        data["U_mag"] = mag.flatten()
+
+    if mu is not None:
+        mu = np.array([mu(p)*10**-12 for p in points])
+        data["mu"] = mu.flatten()
+
+    if grad_u is not None:
+        grad_u = np.array([grad_u(p) for p in points])
+        columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']
+        for col, dat in zip(columns, grad_u.T):
+            data[col] = dat
+            
+        grad_u.resize((npoints,3,3))
+        I = np.eye(3)
+        F = I + grad_u
+        columns = ['F11','F12','F13','F21','F22','F23','F31','F32','F33']
+        for col, dat in zip(columns, F.reshape((npoints,9)).T):
+            data[col] = dat
+
+        columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']
+        C = np.matmul(F.transpose(0,2,1), F)      
+        for col, dat in zip(columns, C.reshape((npoints,9)).T):
+            data[col] = dat
+        
+        w, v = LA.eig(C)
+
+        columns = ['xstretch', 'ystretch', 'zstretch']
+        for col, dat in zip(columns, w.transpose()):
+            data[col] = dat
+
+    return data
+        
+def tabulate3(u):
+    u_arr = u.compute_vertex_values()  # 1-d numpy array
+    length = np.shape(u_arr)[0]
+    u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
+    return u_arr
