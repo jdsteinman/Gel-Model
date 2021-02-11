@@ -11,6 +11,7 @@ from pyevtk.vtk import VtkTriangle
 from sim_tools import level_sets, toDataFrame
 
 """
+Written by: John Steinman
 Fenics simulation of ellipsoidal model with functionally graded gel
 - mu(r) = mu_bulk * (r/r_max) ** k
     - k detrmines shape of profile:
@@ -177,7 +178,7 @@ mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-vert_disp = get_vert_disp(surf_vert, 1, 1, -5)
+vert_disp = get_vert_disp(surf_vert, 1, 1, -2)
 midpoints = get_midpoints(surf_mesh)
 midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
 face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
@@ -192,7 +193,7 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)                           
 
 ## Run Sim ==================================================================================
-chunks = 10
+chunks = 100
 midpoint_disp /= chunks
 
 total_start = time.time()
