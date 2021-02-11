@@ -1,4 +1,5 @@
 import os
+import time
 import meshio
 import numpy as np
 import pandas as pd
@@ -194,7 +195,12 @@ u = Function(V)
 chunks = 10
 midpoint_disp /= chunks
 
+total_start = time.time()
 for i in range(chunks):
+    iter_start = time.time()
+    print("Solver Call: ", i)
+    print("----------------")
+
     ## Inner BC
     face2disp_dict = dict(zip(face_map, midpoint_disp))
     boundary_func = inner_bc(mesh, face2disp_dict)
@@ -203,6 +209,10 @@ for i in range(chunks):
     ## Solver
     u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
 
+    print("Time: ", time.time() - iter_start)
+    print()
+
+print("Total Time: ", time.time() - total_start)
 u.set_allow_extrapolation(True) # Temp fix for evaluating on surface
 
 # Deformation
