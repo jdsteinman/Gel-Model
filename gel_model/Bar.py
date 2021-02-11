@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import numpy.linalg as LA
+import pandas as pd
+import sim_tools as st
 from dolfin import *
 from matplotlib import pyplot as plt
 
@@ -19,7 +21,7 @@ def solver_call(u, du, bcs, mu, lmbda):
     Jac  = det(F)
 
     ## Elasticity parameters
-    nu = 0.4  # Poisson's ratio
+    nu = 0.49  # Poisson's ratio
     mu_bulk = 325 * 10**12  # Bulk Modulus
     lmbda = 2*nu*mu_bulk / (1-2*nu)
 
@@ -41,10 +43,10 @@ def solver_call(u, du, bcs, mu, lmbda):
     return u
 
 # Simulation setup
-output_folder = "./output/"
+output_folder = "./output/bar/"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
-tag = ["uniform", "step"]
+tag = ["step","Uniform"]
 
 mesh = BoxMesh(Point(0.0, -0.5, -0.5), Point(10.0, 0.5, 0.5), 100, 10, 10)
 V = VectorFunctionSpace(mesh, "CG", 1)
@@ -55,32 +57,22 @@ left =  CompiledSubDomain("near(x[0], side) && on_boundary", side = 0.0)
 right = CompiledSubDomain("near(x[0], side) && on_boundary", side = 10.0)
 
 zero = Constant((0.0, 0.0, 0.0))
-u_b = Constant((1.0, 0.0, 0.0))
+u_b = Constant((-1.0, 0.0, 0.0))
 
-bc1 = DirichletBC(V, u_b, right) 
-bc2 = DirichletBC(V, zero, left)
+bc1 = DirichletBC(V, u_b, left) 
+bc2 = DirichletBC(V, zero, right)
 bcs = [bc1, bc2]
 
 # Sim
 lmbda = 1.5925 * 10**16
 mu_bulk = 325 * 10**12  # Bulk Modulus
 mu_expr = []
-mu_expr.append(Expression("mu_bulk", degree=1, mu_bulk = mu_bulk))
-mu_expr.append(Expression("(x[0] > 5) ? mu_bulk/2 : mu_bulk", degree=1, mu_bulk = mu_bulk))
-
-fig, axes = plt.subplots(2, 1)
-axes[0].set_title('Principle Stretch')
-axes[0].set_ylabel("Deformation")
-
-axes[1].set_title('Shear Modulus')
-axes[1].set_ylabel('Shear Modulus (Pa)')
-axes[1].set_ylim(0, 350)
-axes[1].set_xlabel(r'Distance from fixed end ($\mu$m)')
-c = [['r', 'g', 'b'], ['darkorange', 'teal', 'purple']]
+# mu_expr.append(Expression("mu_bulk", degree=1, mu_bulk = mu_bulk))
+mu_expr.append(Expression("(x[0] < 5) ? mu_bulk/2 : mu_bulk", degree=1, mu_bulk = mu_bulk))
 
 for i, mu in enumerate(mu_expr):
     # Solver
-    du, w = TrialFunction(V), TestFunction(V)     # Incremental displacement
+    du, w = TrialFunction(V), TestFunction(V)   # Incremental displacement
     u = Function(V, name="disp" + tag[i])           
     u = solver_call(u, du, bcs, mu, lmbda)
 
@@ -89,35 +81,14 @@ for i, mu in enumerate(mu_expr):
     F = I + grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
 
-    F = project(F, TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+    # Projections
+    mu = project(mu, FunctionSpace(mesh, "DG", 1))
+    grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
     C = project(C, TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
 
     # Plot
     npoints = 100
     points = np.column_stack([np.linspace(0.01, 9.99, npoints), np.zeros(npoints), np.zeros(npoints) ])
     
-    disp = np.array([u(p) for p in points])
-    ux, uy, uz = np.hsplit(disp, 3)
-    u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
-
-    F_arr = np.array([F(p) for p in points])
-    C_arr = np.array([C(p) for p in points])
-    C_arr = C_arr.reshape((npoints,3,3))
-    w, v = LA.eig(C_arr) 
-    
-    mu = project(mu, FunctionSpace(mesh, "DG", 1))
-    mu_arr = np.array([mu(p) for p in points]) * 10**-12
-
-    # axes[0].plot(points[:,0], F_arr[:,0], c=c[i][0], label="F "+tag[i])
-    # axes[0].plot(points[:,0], C_arr[:,0,0], c=c[i][1], label="C "+tag[i])
-    axes[0].plot(points[:,0], w[:,0], c=c[i][1], label=tag[i])
-    axes[1].plot(points[:,0], mu_arr, c=c[i][2], label=tag[i])
-
-plt.tight_layout()
-for ax in axes:
-    ax.grid()
-    ax.legend()
-
-fig.set_size_inches(8, 8, forward=True)
-fig.savefig(output_folder + "rod.png")
-plt.close()
+    data = st.toDataFrame(points, u, mu, grad_u, C)
+    data.to_csv(output_folder+"data.csv", sep=",")

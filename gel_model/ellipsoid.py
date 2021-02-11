@@ -160,8 +160,8 @@ npoints = 100
 zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
 yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
 
-zdata = toDataFrame(axis, u, mu, grad_u)
-ydata = toDataFrame(axis, u, mu, grad_u)
+zdata = toDataFrame(zaxis, u, mu, grad_u)
+ydata = toDataFrame(y1axis, u, mu, grad_u)
 
 zdata.to_csv(output_folder+"data_z.csv", sep=",")
 ydata.to_csv(output_folder+"data_y.csv", sep=",")
