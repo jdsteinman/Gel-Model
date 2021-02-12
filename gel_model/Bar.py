@@ -90,5 +90,6 @@ for i, mu in enumerate(mu_expr):
     npoints = 100
     points = np.column_stack([np.linspace(0.01, 9.99, npoints), np.zeros(npoints), np.zeros(npoints) ])
     
-    data = st.toDataFrame(points, u, mu, grad_u, C)
+    data = st.toDataFrame(points, u, mu, grad_u)
     data.to_csv(output_folder+"data.csv", sep=",")
+    print(data)

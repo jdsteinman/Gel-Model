@@ -197,7 +197,7 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
     plot_sets(u_sets, sets, output_folder)
 
 ## Data Output
-def toDataFrame(points, u=None, mu=None, grad_u=None, C=None):
+def toDataFrame(points, u=None, mu=None, grad_u=None):
 
     data=pd.DataFrame()
     npoints = np.size(points, 0)
@@ -242,8 +242,12 @@ def toDataFrame(points, u=None, mu=None, grad_u=None, C=None):
         
         w, v = LA.eig(C)
 
-        columns = ['xstretch', 'ystretch', 'zstretch']
+        columns = ['w1', 'w2', 'w3']
         for col, dat in zip(columns, w.transpose()):
+            data[col] = dat
+
+        columns = ["v11","v12", "v13", "v21", "v22", "v23", "v31", "v32", "v33"]
+        for col, dat in zip(columns, v.reshape((npoints,9), order="F").T):
             data[col] = dat
 
     return data
@@ -253,3 +257,6 @@ def tabulate3(u):
     length = np.shape(u_arr)[0]
     u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
     return u_arr
+
+# VTK Function
+# Level sets output deformation
