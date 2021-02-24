@@ -195,7 +195,7 @@ def generate_sets(sets, vert, conn, u, grad_u=None, output_folder="./"):
     
     return u_sets
 
-## Deformation Outputs
+## Deformation Tensors
 def deformation_tensors(points, grad_u):
 
     # Number of points
@@ -256,38 +256,25 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
         data["mu"] = mu.flatten()
 
     if grad_u is not None:
+
+        du, F, R, U, C = deformation_tensors(points, grad_u)
         
         # Displacement Gradient
         grad_u = np.array([grad_u(p) for p in points])
         columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']
-        for col, dat in zip(columns, grad_u.T):
+        for col, dat in zip(columns, du.reshape((npoints, 9)).T):
             data[col] = dat
             
         # Deformation Tensor
-        grad_u.resize((npoints,3,3))
-        I = np.eye(3)
-        F = I + grad_u
         columns = ['F11','F12','F13','F21','F22','F23','F31','F32','F33']
         for col, dat in zip(columns, F.reshape((npoints,9)).T):
             data[col] = dat
 
-        # Polar Decomposition
-        R=[], U=[]
-        for f in F:
-            r, u = polar(f)
-            R.append(r)
-            U.append(u)
-        R = np.array(R)
-        U = np.array(U)
-
         # Right Cauchy-Green Tensor
-        columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']
-        C = np.matmul(F.transpose(0,2,1), F)      
+        columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']    
         for col, dat in zip(columns, C.reshape((npoints,9)).T):
             data[col] = dat
         
-        # Stretches
-
         # Eigenvalues/eigenvectors
         w, v = eig(C)
 

@@ -166,7 +166,7 @@ inner_number = 201
 volume_number = 300
 
 # Material parameters
-nu = 0.49                         # Poisson's ratio
+nu = 0.49                        # Poisson's ratio
 mu_bulk = 325 * 10**12           # Bulk Modulus
 lmbda = 2*nu*mu_bulk / (1-2*nu)  # 1st Lame Parameter
 k = 0.                           # profile shape
@@ -225,6 +225,7 @@ C = F.T*F            # Right Cauchy-Green tensor
 grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
 grad_u.set_allow_extrapolation(True)
 mu = project(mu, FunctionSpace(mesh, "DG", 1))
+mu.set_allow_extrapolation(True)
 
 ### Outputs ==================================================================================
 
