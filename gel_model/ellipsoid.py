@@ -23,17 +23,17 @@ Fenics simulation of ellipsoidal model with functionally graded gel
     - displacement, gradient, and Jacobian fields (XDMF)
     - displacement on isosurfaces (VTK)
     - displacement at each vertex (txt)
-    - summary of simulation parameters (txt)
+    - summary o f simulation parameters (txt)
 """ 
 
 ## Functions and Class Definitions =========================================================
 class shear_modulus(UserExpression):
-    def __init__(self, vert, conn, **kwargs):
-        super().__init__(**kwargs)
+    def __init__ (self, vert, conn, **kwargs):
+        super()._ _init__(**kwargs)
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices
 
     def set_params(self, mu_bulk, k, rmax):    
-        self._mu = mu_bulk
+        self._mu =  mu_bulk
         self._k = k
         self._rmax = rmax
 
@@ -152,7 +152,7 @@ surf_mesh = meshio.read(mesh_path + "ellipsoid_surface.xdmf")
 surf_vert = np.array(surf_mesh.points)
 surf_conn = np.array(surf_mesh.cells[0].data)
 
-## Function space    
+## Function space
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 ## Subdomain markers
@@ -189,7 +189,7 @@ bcs.append(None)
 
 ## Functions
 du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
-u = Function(V)                           
+u = Function(V)
 
 ## Run Sim ==================================================================================
 chunks = 1
@@ -223,6 +223,7 @@ C = F.T*F            # Right Cauchy-Green tensor
 
 # Projections
 grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+grad_u.set_allow_extrapolation(True)
 mu = project(mu, FunctionSpace(mesh, "DG", 1))
 
 ### Outputs ==================================================================================

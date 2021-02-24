@@ -21,7 +21,7 @@ Physical Surface(201) = {7};
 Physical Surface(200) = {4, 5, 3, 2, 6, 1};
 
 Mesh.Algorithm = "Delaunay";
-Characteristic Length{:} = 5;
+Characteristic Length{:} = 1;
 // Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 // Characteristic Length{PointsOf{Physical Volume{300};}}  = 10;
 // Characteristic Length{PointsOf{Physical Surface{200};}} = 5;
