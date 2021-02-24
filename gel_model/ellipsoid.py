@@ -29,7 +29,7 @@ Fenics simulation of ellipsoidal model with functionally graded gel
 ## Functions and Class Definitions =========================================================
 class shear_modulus(UserExpression):
     def __init__ (self, vert, conn, **kwargs):
-        super()._ _init__(**kwargs)
+        super().__init__(**kwargs)
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices
 
     def set_params(self, mu_bulk, k, rmax):    
