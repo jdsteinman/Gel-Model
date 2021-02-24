@@ -234,16 +234,16 @@ sets = [1, 1.2, 1.4, 1.6, 1.8, 2]
 set_disp = generate_sets(sets, surf_vert, surf_conn, u, grad_u, output_folder)
 plot_sets(sets, set_disp, output_folder)
 
-# ## Table Outputs
-# npoints = 100
-# zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
-# yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
+## Table Outputs
+npoints = 100
+zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
+yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
 
-# zdata = toDataFrame(zaxis, u, mu, grad_u)
-# ydata = toDataFrame(yaxis, u, mu, grad_u)
+zdata = toDataFrame(zaxis, u, mu, grad_u)
+ydata = toDataFrame(yaxis, u, mu, grad_u)
 
-# zdata.to_csv(output_folder+"data_z.csv", sep=",")
-# ydata.to_csv(output_folder+"data_y.csv", sep=",")
+zdata.to_csv(output_folder+"data_z.csv", sep=",")
+ydata.to_csv(output_folder+"data_y.csv", sep=",")
 
 # XDMF Outputs
 disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
