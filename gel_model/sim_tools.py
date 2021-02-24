@@ -2,9 +2,11 @@ import meshio
 import math
 import pandas as pd
 import numpy as np
-import numpy.linalg as LA
+import scipy as sp
 import matplotlib.pyplot as plt
 import seaborn as sb
+from numpy.linalg import eig
+from scipy.linalg import polar
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
 from dolfin import Function as fenicsFunc
@@ -107,7 +109,7 @@ def set_axis_style(ax, labels):
     ax.set_xlim(0.25, len(labels) + 0.75)
     ax.set_xlabel('Isosurface multiplier')
 
-def plot_sets(disp, sets, output_folder):
+def plot_sets(sets, disp, output_folder="./"):
 
     fig, ax = plt.subplots(nrows=1, ncols=1)
 
@@ -138,15 +140,15 @@ def plot_sets(disp, sets, output_folder):
 
     plt.savefig(output_folder + 'isoplots.png', bbox_inches='tight')
 
-##Grand Finale
-def level_sets(sets, vert, conn, u, output_folder="./"):
+## Generate level sets
+def generate_sets(sets, vert, conn, u, grad_u=None, output_folder="./"):
 
     # Format inputs
     vert = np.asarray(vert, dtype="float64")
     conn = np.asarray(conn, dtype="int64")
 
     # number of points/cells
-    nvert = np.size(vert, 0)
+    npoints = np.size(vert, 0)
     ncells = np.size(conn, 0)
 
     # Create level sets
@@ -155,21 +157,6 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
 
     for s in sets:
         points = np.array(set_dict[str(s)], dtype="float64")
-
-        # x,y,z
-        x = points[:,0]
-        y = points[:,1]
-        z = points[:,2]
-
-        # cell types
-        ctype = np.zeros(ncells)
-        ctype[:] = VtkTriangle.tid
-
-        # ravel conenctivity
-        conn_ravel = conn.ravel().astype("int64")
-
-        # offset begins with 1
-        offset = 3 * (np.arange(ncells, dtype='int64') + 1)
 
         # Data
         disp = np.array([u(p) for p in points])
@@ -184,6 +171,10 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
 
         # normals
         normals = get_surface_normals(points, conn)
+        nx, ny, nz = normals[:,0], normals[:,1], normals[:,2]
+        nx = np.ascontiguousarray(nx, dtype=np.float32)
+        ny = np.ascontiguousarray(ny, dtype=np.float32)
+        nz = np.ascontiguousarray(nz, dtype=np.float32)
 
         # dot product
         u_dot = dots(disp, normals)
@@ -191,12 +182,54 @@ def level_sets(sets, vert, conn, u, output_folder="./"):
         # signed magnitude
         s_mag = u_mag * np.abs(u_dot) / u_dot
 
-        unstructuredGridToVTK(output_folder + "set_" + str(s), x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype, 
-        pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag})
-    
-    plot_sets(u_sets, sets, output_folder)
+        # Deformation Outputs
+        du, F, R, U, C = deformation_tensors(points, grad_u)
 
-## Data Output
+        # Normal Stretches
+        stretches = get_stretches(normals, C)
+
+        pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag, 
+                   "n_x" : nx, "n_y" : ny, "n_z" : nz, "stretch":stretches}
+
+        toVTK(output_folder + "set_" + str(s), points, conn, pointData)
+    
+    return u_sets
+
+## Deformation Outputs
+def deformation_tensors(points, grad_u):
+
+    # Number of points
+    npoints = np.size(points, 0)
+
+    # Displacement Gradient
+    grad_u = np.array([grad_u(p) for p in points])
+    grad_u.resize((npoints,3,3))
+
+    # Deformation Gradient
+    I = np.eye(3)
+    F = I + grad_u
+
+    # Polar Decomposition
+    R, U = [], []
+    for f in F:
+        r, u = polar(f)
+        R.append(r)
+        U.append(u)
+    R = np.array(R)
+    U = np.array(U)
+
+    # Right Cauchy-Green Tensor
+    C = np.matmul(F.transpose(0,2,1), F)   
+
+    return grad_u, F, R, U, C
+
+def get_stretches(u, C):
+    npoints = np.size(u, 0)
+    u.resize(npoints, 3, 1)
+    stretches = np.matmul(u.transpose(0, 2, 1), np.matmul(C, u)) ** 0.5
+    return stretches
+
+## Export Data
 def toDataFrame(points, u=None, mu=None, grad_u=None):
 
     data=pd.DataFrame()
@@ -223,11 +256,14 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
         data["mu"] = mu.flatten()
 
     if grad_u is not None:
+        
+        # Displacement Gradient
         grad_u = np.array([grad_u(p) for p in points])
         columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']
         for col, dat in zip(columns, grad_u.T):
             data[col] = dat
             
+        # Deformation Tensor
         grad_u.resize((npoints,3,3))
         I = np.eye(3)
         F = I + grad_u
@@ -235,12 +271,25 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
         for col, dat in zip(columns, F.reshape((npoints,9)).T):
             data[col] = dat
 
+        # Polar Decomposition
+        R=[], U=[]
+        for f in F:
+            r, u = polar(f)
+            R.append(r)
+            U.append(u)
+        R = np.array(R)
+        U = np.array(U)
+
+        # Right Cauchy-Green Tensor
         columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']
         C = np.matmul(F.transpose(0,2,1), F)      
         for col, dat in zip(columns, C.reshape((npoints,9)).T):
             data[col] = dat
         
-        w, v = LA.eig(C)
+        # Stretches
+
+        # Eigenvalues/eigenvectors
+        w, v = eig(C)
 
         columns = ['w1', 'w2', 'w3']
         for col, dat in zip(columns, w.transpose()):
@@ -251,12 +300,31 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
             data[col] = dat
 
     return data
-        
+
+def toVTK(fname, points, conn, pointData):
+
+    # x,y,z
+    x = points[:,0]
+    y = points[:,1]
+    z = points[:,2]
+
+    # cell types
+    ncells = np.size(conn, 0)
+    ctype = np.zeros(ncells)
+    ctype[:] = VtkTriangle.tid
+
+    # ravel conenctivity
+    conn_ravel = conn.ravel().astype("int64")
+
+    # offset begins with 1
+    offset = 3 * (np.arange(ncells, dtype='int64') + 1)    
+
+    unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  pointData=pointData)    
+
+    return
+
 def tabulate3(u):
     u_arr = u.compute_vertex_values()  # 1-d numpy array
     length = np.shape(u_arr)[0]
     u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
     return u_arr
-
-# VTK Function
-# Level sets output deformation

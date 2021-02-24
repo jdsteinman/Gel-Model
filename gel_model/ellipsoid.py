@@ -8,7 +8,7 @@ from scipy.spatial import distance_matrix
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
-from sim_tools import level_sets, toDataFrame
+from sim_tools import generate_sets, plot_sets, toDataFrame
 
 """
 Written by: John Steinman
@@ -46,8 +46,8 @@ class shear_modulus(UserExpression):
         r = np.amin(r)
 
         if r < self._rmax:
-            # value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
-            value[0] = self._mu*0.5 + self._k*.01   # Step function
+            value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
+            # value[0] = self._mu*0.5 + self._k*.01   # Step function
         else:
             value[0] = self._mu * 1.01
 
@@ -137,7 +137,7 @@ def solver_call(u, du, bcs, mu, lmbda):
 ### Simulation Setup ================================================================================
 
 ## Files
-tag = "step"
+tag = "test"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
@@ -192,7 +192,7 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)                           
 
 ## Run Sim ==================================================================================
-chunks = 10
+chunks = 1
 midpoint_disp /= chunks
 
 total_start = time.time()
@@ -228,19 +228,20 @@ mu = project(mu, FunctionSpace(mesh, "DG", 1))
 ### Outputs ==================================================================================
 
 ## Isosurfaces
-# sets = [1, 1.2, 1.4, 1.6, 1.8, 2]
-# level_sets(sets, surf_vert, surf_conn, u, output_folder)
+sets = [1, 1.2, 1.4, 1.6, 1.8, 2]
+set_disp = generate_sets(sets, surf_vert, surf_conn, u, grad_u, output_folder)
+plot_sets(sets, set_disp, output_folder)
 
-## Table Outputs
-npoints = 100
-zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
-yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
+# ## Table Outputs
+# npoints = 100
+# zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
+# yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
 
-zdata = toDataFrame(zaxis, u, mu, grad_u)
-ydata = toDataFrame(yaxis, u, mu, grad_u)
+# zdata = toDataFrame(zaxis, u, mu, grad_u)
+# ydata = toDataFrame(yaxis, u, mu, grad_u)
 
-zdata.to_csv(output_folder+"data_z.csv", sep=",")
-ydata.to_csv(output_folder+"data_y.csv", sep=",")
+# zdata.to_csv(output_folder+"data_z.csv", sep=",")
+# ydata.to_csv(output_folder+"data_y.csv", sep=",")
 
 # XDMF Outputs
 disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
