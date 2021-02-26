@@ -8,7 +8,7 @@ from scipy.spatial import distance_matrix
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
-from sim_tools import generate_sets, plot_sets, toDataFrame
+from sim_tools import generate_sets, plot_sets, data_over_line
 
 """
 Written by: John Steinman
@@ -23,7 +23,7 @@ Fenics simulation of ellipsoidal model with functionally graded gel
     - displacement, gradient, and Jacobian fields (XDMF)
     - displacement on isosurfaces (VTK)
     - displacement at each vertex (txt)
-    - summary o f simulation parameters (txt)
+    - summary of simulation parameters (txt)
 """ 
 
 ## Functions and Class Definitions =========================================================
@@ -46,8 +46,8 @@ class shear_modulus(UserExpression):
         r = np.amin(r)
 
         if r < self._rmax:
-            value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
-            # value[0] = self._mu*0.5 + self._k*.01   # Step function
+            # value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
+            value[0] = self._mu*0.5 + self._k*.01   # Step function
         else:
             value[0] = self._mu * 1.01
 
@@ -137,7 +137,7 @@ def solver_call(u, du, bcs, mu, lmbda):
 ### Simulation Setup ================================================================================
 
 ## Files
-tag = "test"
+tag = "step"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
@@ -153,6 +153,7 @@ surf_vert = np.array(surf_mesh.points)
 surf_conn = np.array(surf_mesh.cells[0].data)
 
 ## Function space
+# Try higher degree
 V = VectorFunctionSpace(mesh, "Lagrange", 1)
 
 ## Subdomain markers
@@ -192,7 +193,7 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)
 
 ## Run Sim ==================================================================================
-chunks = 1
+chunks = 100
 midpoint_disp /= chunks
 
 total_start = time.time()
@@ -236,11 +237,8 @@ plot_sets(sets, set_disp, output_folder)
 
 ## Table Outputs
 npoints = 100
-zaxis = np.column_stack((np.zeros(npoints), np.zeros(npoints), np.linspace(20, l, npoints) ))
-yaxis = np.column_stack((np.zeros(npoints), np.linspace(10, l, npoints), np.zeros(npoints) ))
-
-zdata = toDataFrame(zaxis, u, mu, grad_u)
-ydata = toDataFrame(yaxis, u, mu, grad_u)
+zdata = data_over_line('z', 20, l, npoints, u, mu, grad_u)
+ydata = data_over_line('y', 10, l, npoints, u, mu, grad_u)
 
 zdata.to_csv(output_folder+"data_z.csv", sep=",")
 ydata.to_csv(output_folder+"data_y.csv", sep=",")

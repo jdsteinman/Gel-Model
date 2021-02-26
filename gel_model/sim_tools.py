@@ -55,6 +55,8 @@ def mult_rad(inc, vertices):
         sets[str(i)] = cart_vert
     return(sets)
 
+## compare with fenics function
+
 def get_surface_normals(vert, conn):
      # Check type
     vert = np.asarray(vert, dtype="float64")
@@ -227,10 +229,10 @@ def get_stretches(u, C):
     npoints = np.size(u, 0)
     u.resize(npoints, 3, 1)
     stretches = np.matmul(u.transpose(0, 2, 1), np.matmul(C, u)) ** 0.5
-    return stretches
+    return stretches.ravel()
 
 ## Export Data
-def toDataFrame(points, u=None, mu=None, grad_u=None):
+def toDataFrame(points, u=None, mu=None, grad_u=None, F=None, C=None, stretches=None):
 
     data=pd.DataFrame()
     npoints = np.size(points, 0)
@@ -243,7 +245,6 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
     data["r"] = r.flatten()
 
     if u is not None:
-        u = np.array([u(p) for p in points])
         ux, uy, uz = np.hsplit(u, 3)
         mag = np.sqrt(ux**2 + uy**2 + uz**2)
         data["ux"] = ux.flatten()
@@ -252,24 +253,20 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
         data["U_mag"] = mag.flatten()
 
     if mu is not None:
-        mu = np.array([mu(p)*10**-12 for p in points])
         data["mu"] = mu.flatten()
 
     if grad_u is not None:
-
-        du, F, R, U, C = deformation_tensors(points, grad_u)
-        
-        # Displacement Gradient
-        grad_u = np.array([grad_u(p) for p in points])
         columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']
-        for col, dat in zip(columns, du.reshape((npoints, 9)).T):
+        for col, dat in zip(columns, grad_u.reshape((npoints, 9)).T):
             data[col] = dat
             
+    if F is not None:
         # Deformation Tensor
         columns = ['F11','F12','F13','F21','F22','F23','F31','F32','F33']
         for col, dat in zip(columns, F.reshape((npoints,9)).T):
             data[col] = dat
 
+    if C is not None:
         # Right Cauchy-Green Tensor
         columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']    
         for col, dat in zip(columns, C.reshape((npoints,9)).T):
@@ -285,6 +282,41 @@ def toDataFrame(points, u=None, mu=None, grad_u=None):
         columns = ["v11","v12", "v13", "v21", "v22", "v23", "v31", "v32", "v33"]
         for col, dat in zip(columns, v.reshape((npoints,9), order="F").T):
             data[col] = dat
+
+    if stretches is not None:
+        data['stretches'] = stretches
+
+    return data
+
+def data_over_line(axis, start, stop, npoints, u=None, mu=None, grad_u=None):
+
+    if axis == 'x':
+        points = np.column_stack(np.linspace(start, stop, npoints), (np.zeros(npoints), np.zeros(npoints) ))
+        vec = np.array([1, 0, 0]).T
+    elif axis == 'y':
+        points = np.column_stack((np.zeros(npoints), np.linspace(start, stop, npoints), np.zeros(npoints) ))
+        vec = np.array([0, 1, 0]).T
+    elif axis == 'z':
+        points = np.column_stack((np.zeros(npoints), np.zeros(npoints),  np.linspace(start, stop, npoints) ))
+        vec = np.array([0, 0, 1]).T
+    else:
+        print('Invalid axis')
+        return None
+
+    if u is not None:
+        u = np.array([u(p) for p in points])
+
+    if mu is not None:
+        mu = np.array([mu(p)*10**-12 for p in points])
+
+    stretches=None
+    if grad_u is not None:
+        du, F, R, U, C = deformation_tensors(points, grad_u)
+        vec = np.broadcast_to(vec, (npoints,3))
+        vec =np.ascontiguousarray(vec)
+        stretches = get_stretches(vec, C)
+
+    data = toDataFrame(points=points, u=u, mu=mu, grad_u=du, F=F, C=C, stretches=stretches)
 
     return data
 

@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import numpy.linalg as LA
 import pandas as pd
@@ -70,6 +71,7 @@ mu_expr = []
 # mu_expr.append(Expression("mu_bulk", degree=1, mu_bulk = mu_bulk))
 mu_expr.append(Expression("(x[0] < 5) ? mu_bulk/2 : mu_bulk", degree=1, mu_bulk = mu_bulk))
 
+total_start = time.time()
 for i, mu in enumerate(mu_expr):
     # Solver
     du, w = TrialFunction(V), TestFunction(V)   # Incremental displacement
@@ -92,4 +94,5 @@ for i, mu in enumerate(mu_expr):
     
     data = st.toDataFrame(points, u, mu, grad_u)
     data.to_csv(output_folder+"data.csv", sep=",")
-    print(data)
+
+print("Total Time: ", time.time() - total_start)
