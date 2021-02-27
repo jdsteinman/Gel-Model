@@ -226,6 +226,10 @@ def ArraystoDF(points, normals=None, mu=None, u=None, grad_u=None, F=None, C=Non
         data["uz"] = uz.flatten()
         data["umag"] = umag.flatten()
 
+    if normals is not None and u is not None:
+        udot = dots(u, normals)
+        data["udot"] = udot
+
     # Displacement Gradient
     if grad_u is not None:
         columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']

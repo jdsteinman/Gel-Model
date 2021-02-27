@@ -177,7 +177,7 @@ mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-vert_disp = get_vert_disp(surf_vert, 0.25, 0.25, -.5)
+vert_disp = get_vert_disp(surf_vert, 0.5, 0.5, -1)
 midpoints = get_midpoints(surf_mesh)
 midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
 face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
@@ -192,7 +192,7 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)
 
 ## Run Sim ==================================================================================
-chunks = 1
+chunks = 10
 midpoint_disp /= chunks
 
 total_start = time.time()
