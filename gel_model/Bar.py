@@ -89,10 +89,11 @@ for i, mu in enumerate(mu_expr):
     C = project(C, TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
 
     # Plot
-    npoints = 100
-    points = np.column_stack([np.linspace(0.01, 9.99, npoints), np.zeros(npoints), np.zeros(npoints) ])
-    
-    data = st.toDataFrame(points, u, mu, grad_u)
+    point = [0.01, 0, 0]
+    direction = [1, 0, 0]
+    bounds = 10
+
+    data = st.data_over_line(point, direction, 0.01, bounds, mu, u, grad_u)
     data.to_csv(output_folder+"data.csv", sep=",")
 
 print("Total Time: ", time.time() - total_start)

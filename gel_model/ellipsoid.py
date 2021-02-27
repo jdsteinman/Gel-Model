@@ -8,7 +8,7 @@ from scipy.spatial import distance_matrix
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
-from sim_tools import generate_sets, plot_sets, data_over_line
+from sim_tools import generate_sets, save_sets, plot_sets, data_over_line
 
 """
 Written by: John Steinman
@@ -153,8 +153,7 @@ surf_vert = np.array(surf_mesh.points)
 surf_conn = np.array(surf_mesh.cells[0].data)
 
 ## Function space
-# Try higher degree
-V = VectorFunctionSpace(mesh, "Lagrange", 1)
+V = VectorFunctionSpace(mesh, "CG", 1)
 
 ## Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
@@ -178,7 +177,7 @@ mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-vert_disp = get_vert_disp(surf_vert, 1, 1, -2)
+vert_disp = get_vert_disp(surf_vert, 0.25, 0.25, -.5)
 midpoints = get_midpoints(surf_mesh)
 midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
 face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
@@ -193,7 +192,7 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)
 
 ## Run Sim ==================================================================================
-chunks = 100
+chunks = 1
 midpoint_disp /= chunks
 
 total_start = time.time()
@@ -223,34 +222,38 @@ F = I + grad(u)      # Deformation gradient
 C = F.T*F            # Right Cauchy-Green tensor
 
 # Projections
-grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
-grad_u.set_allow_extrapolation(True)
 mu = project(mu, FunctionSpace(mesh, "DG", 1))
 mu.set_allow_extrapolation(True)
+
+grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+grad_u.set_allow_extrapolation(True)
 
 ### Outputs ==================================================================================
 
 ## Isosurfaces
-sets = [1, 1.2, 1.4, 1.6, 1.8, 2]
-set_disp = generate_sets(sets, surf_vert, surf_conn, u, grad_u, output_folder)
-plot_sets(sets, set_disp, output_folder)
+factors = [1, 1.2, 1.4, 1.6, 1.8, 2]
+set_dict = generate_sets(factors, surf_vert)
+set_data = save_sets(set_dict, surf_conn, mu, u, grad_u, output_folder)
+plot_sets(factors, set_data, output_folder)
 
 ## Table Outputs
-npoints = 100
-zdata = data_over_line('z', 20, l, npoints, u, mu, grad_u)
-ydata = data_over_line('y', 10, l, npoints, u, mu, grad_u)
-
+zpoint = [0,0,20]
+zdir = [0,0,1]
+zdata = data_over_line(zpoint, zdir, 0.1, l, mu, u, grad_u)
 zdata.to_csv(output_folder+"data_z.csv", sep=",")
-ydata.to_csv(output_folder+"data_y.csv", sep=",")
 
 # XDMF Outputs
+mu_file = XDMFFile(output_folder + "mu_" + tag + ".xdmf")
+mu.rename("mu", "shear_modulus")
+mu_file.write(mu)
+
 disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
 u.rename("u","displacement")
 disp_file.write(u)
 
-mu_file = XDMFFile(output_folder + "mu_" + tag + ".xdmf")
-mu.rename("mu", "shear_modulus")
-mu_file.write(mu)
+grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
+grad_u.rename("grad_u","displacement gradient")
+grad_file.write(grad_u)
 
 ## Save Simulation Parameters
 f = open(output_folder + "profile.txt", "w+")

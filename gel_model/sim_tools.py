@@ -36,24 +36,20 @@ def pol2cart(rho, phi, theta):
     return(x, y, z)
 
 ## Convert to polar, add r + k, convert back to cartesian
-def add_to_rad(inc, vertices):
-    sets = {}
-    for i in inc:
-        polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
-        polar_vert[:,0] += i
-        cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
-        sets[str(i)] = cart_vert
-    return(sets)
+def add_to_radius(vertices, k):
+    polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
+    polar_vert[:,0] += k
+    cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
+    
+    return cart_vert
 
 ## Convert to polar, multiply r*k, convert back to cartesian
-def mult_rad(inc, vertices):
-    sets = {}
-    for i in inc:
-        polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
-        polar_vert[:,0] *= i
-        cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
-        sets[str(i)] = cart_vert
-    return(sets)
+def scale_radius(vertices, k):
+    polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
+    polar_vert[:,0] *= k
+    cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
+    
+    return cart_vert
 
 ## compare with fenics function
 
@@ -94,110 +90,77 @@ def dots(disp, norms):
 
     return dp
 
-## Level Set Plots
-def adjacent_values(vals, q1, q3):
-    upper_adjacent_value = q3 + (q3 - q1) * 1.5
-    upper_adjacent_value = np.clip(upper_adjacent_value, q3, vals[-1])
 
-    lower_adjacent_value = q1 - (q3 - q1) * 1.5
-    lower_adjacent_value = np.clip(lower_adjacent_value, vals[0], q1)
-    return lower_adjacent_value, upper_adjacent_value
-
-def set_axis_style(ax, labels):
-    ax.get_xaxis().set_tick_params(direction='out')
-    ax.xaxis.set_ticks_position('bottom')
-    ax.set_xticks(np.arange(1, len(labels) + 1))
-    ax.set_xticklabels(labels)
-    ax.set_xlim(0.25, len(labels) + 0.75)
-    ax.set_xlabel('Isosurface multiplier')
-
-def plot_sets(sets, disp, output_folder="./"):
-
-    fig, ax = plt.subplots(nrows=1, ncols=1)
-
-    ax.set_title('Displacement on Isosurfaces')
-    ax.set_ylabel(r'Displacement ($\mu$m)')
-    parts = ax.violinplot(
-            disp, showmeans=False, showmedians=False,
-            showextrema=False)
-
-    for pc in parts['bodies']:
-        pc.set_facecolor('xkcd:pale teal')
-        pc.set_edgecolor('black')
-        pc.set_alpha(1)
-
-    quartile1, medians, quartile3 = np.percentile(disp, [25, 50, 75], axis=1)
-    whiskers = np.array([
-        adjacent_values(sorted_array, q1, q3)
-        for sorted_array, q1, q3 in zip(disp, quartile1, quartile3)])
-    whiskersMin, whiskersMax = whiskers[:, 0], whiskers[:, 1]
-
-    inds = np.arange(1, len(medians) + 1)
-    ax.scatter(inds, medians, marker='o', color='white', s=30, zorder=3)
-    ax.vlines(inds, quartile1, quartile3, color='dimgrey', linestyle='-', lw=5)
-    ax.vlines(inds, whiskersMin, whiskersMax, color='dimgrey', linestyle='-', lw=1)
-
-    labels = [str(s) for s in sets]
-    set_axis_style(ax, labels)
-
-    plt.savefig(output_folder + 'isoplots.png', bbox_inches='tight')
-
-## Generate level sets
-def generate_sets(sets, vert, conn, u, grad_u=None, output_folder="./"):
+## Isosurface Outputs ========================================================================
+def generate_sets(factors, points):
 
     # Format inputs
-    vert = np.asarray(vert, dtype="float64")
-    conn = np.asarray(conn, dtype="int64")
-
-    # number of points/cells
-    npoints = np.size(vert, 0)
-    ncells = np.size(conn, 0)
+    points = np.asarray(points, dtype="float64")
 
     # Create level sets
-    set_dict = mult_rad(sets, vert)
-    u_sets = []
+    set_dict = {}
+    for f in factors:
+        set_points = scale_radius(points, f)
+        set_dict[str(f)] = set_points
 
-    for s in sets:
-        points = np.array(set_dict[str(s)], dtype="float64")
+    return set_dict
 
-        # Data
-        disp = np.array([u(p) for p in points])
-        ux, uy, uz = disp[:,0], disp[:,1], disp[:,2]
-        ux = np.ascontiguousarray(ux, dtype=np.float32)
-        uy = np.ascontiguousarray(uy, dtype=np.float32)
-        uz = np.ascontiguousarray(uz, dtype=np.float32)
 
-        # magnitude
-        u_mag = np.sqrt(ux**2 + uy**2 + uz**2)
-        u_sets.append(u_mag)
+def save_sets(set_dict, conn, mu=None, u=None, grad_u=None, output_folder="./"):
 
-        # normals
-        normals = get_surface_normals(points, conn)
-        nx, ny, nz = normals[:,0], normals[:,1], normals[:,2]
-        nx = np.ascontiguousarray(nx, dtype=np.float32)
-        ny = np.ascontiguousarray(ny, dtype=np.float32)
-        nz = np.ascontiguousarray(nz, dtype=np.float32)
+    # Loop through isosurfaces
+    set_data = {}
+    for factor, points in set_dict.items():
 
-        # dot product
-        u_dot = dots(disp, normals)
+        # Format 
+        points = np.asarray(points, dtype="float64")
+        conn = np.asarray(conn, dtype="int64")
 
-        # signed magnitude
-        s_mag = u_mag * np.abs(u_dot) / u_dot
+        # get point data
+        point_data = create_point_data(points, conn, mu, u, grad_u)
 
-        # Deformation Outputs
+        # save set data
+        set_data[factor] = point_data
+
+        # write to vtk
+        writeVTK(output_folder + "set_" + str(factor), points, conn, point_data)
+
+    return set_data
+
+
+def create_point_data(points, conn, mu, u, grad_u):
+    
+    # Surface normals
+    normals = get_surface_normals(points, conn)
+
+    # Shear modulus
+    if mu is not None:
+        mu = np.array([mu(p) for p in points])
+
+    if u is not None:
+        u = np.array([u(p) for p in points])
+
+    # Deformation Data
+    if grad_u is not None:
         du, F, R, U, C = deformation_tensors(points, grad_u)
 
         # Normal Stretches
         stretches = get_stretches(normals, C)
 
-        pointData={"u_x" : ux, "u_y" : uy, "u_z" : uz, "u_mag" : u_mag, "u_dot" : u_dot, "u_mag_signed":s_mag, 
-                   "n_x" : nx, "n_y" : ny, "n_z" : nz, "stretch":stretches}
+    # Dataframe
+    df = ArraystoDF(points, normals, mu, u, du, F, C, stretches)
 
-        toVTK(output_folder + "set_" + str(s), points, conn, pointData)
-    
-    return u_sets
+    # Point data dictionary
+    point_data = {}
+    for column in df:
+        skips = ['x', 'y', 'z', 'r']
+        if column in skips: continue
 
-## Deformation Tensors
+        dat = np.ascontiguousarray(df[column],  dtype=np.float32)
+        point_data[column] = dat
+
+    return point_data
+
 def deformation_tensors(points, grad_u):
 
     # Number of points
@@ -231,8 +194,7 @@ def get_stretches(u, C):
     stretches = np.matmul(u.transpose(0, 2, 1), np.matmul(C, u)) ** 0.5
     return stretches.ravel()
 
-## Export Data
-def toDataFrame(points, u=None, mu=None, grad_u=None, F=None, C=None, stretches=None):
+def ArraystoDF(points, normals=None, mu=None, u=None, grad_u=None, F=None, C=None, stretches=None):
 
     data=pd.DataFrame()
     npoints = np.size(points, 0)
@@ -244,30 +206,40 @@ def toDataFrame(points, u=None, mu=None, grad_u=None, F=None, C=None, stretches=
     data["z"] = z.flatten()
     data["r"] = r.flatten()
 
-    if u is not None:
-        ux, uy, uz = np.hsplit(u, 3)
-        mag = np.sqrt(ux**2 + uy**2 + uz**2)
-        data["ux"] = ux.flatten()
-        data["uy"] = uy.flatten()
-        data["uz"] = uz.flatten()
-        data["U_mag"] = mag.flatten()
+    # Surface Normals
+    if normals is not None:
+        nx, ny, nz = np.hsplit(normals, 3)
+        data["nx"] = nx.flatten()
+        data["ny"] = ny.flatten()
+        data["nz"] = nz.flatten()
 
+    # Shear Modulus
     if mu is not None:
         data["mu"] = mu.flatten()
 
+    # Displacement
+    if u is not None:
+        ux, uy, uz = np.hsplit(u, 3)
+        umag = np.sqrt(ux**2 + uy**2 + uz**2)
+        data["ux"] = ux.flatten()
+        data["uy"] = uy.flatten()
+        data["uz"] = uz.flatten()
+        data["umag"] = umag.flatten()
+
+    # Displacement Gradient
     if grad_u is not None:
         columns = ['g11','g12','g13','g21','g22','g23','g31','g32','g33']
         for col, dat in zip(columns, grad_u.reshape((npoints, 9)).T):
             data[col] = dat
-            
+
+    # Deformation Tensor        
     if F is not None:
-        # Deformation Tensor
         columns = ['F11','F12','F13','F21','F22','F23','F31','F32','F33']
         for col, dat in zip(columns, F.reshape((npoints,9)).T):
             data[col] = dat
 
+    # Right Cauchy-Green Tensor
     if C is not None:
-        # Right Cauchy-Green Tensor
         columns = ['C11','C12','C13','C21','C22','C23','C31','C32','C33']    
         for col, dat in zip(columns, C.reshape((npoints,9)).T):
             data[col] = dat
@@ -283,44 +255,13 @@ def toDataFrame(points, u=None, mu=None, grad_u=None, F=None, C=None, stretches=
         for col, dat in zip(columns, v.reshape((npoints,9), order="F").T):
             data[col] = dat
 
+    # Stretch
     if stretches is not None:
-        data['stretches'] = stretches
+        data['normalstretches'] = stretches
 
     return data
 
-def data_over_line(axis, start, stop, npoints, u=None, mu=None, grad_u=None):
-
-    if axis == 'x':
-        points = np.column_stack(np.linspace(start, stop, npoints), (np.zeros(npoints), np.zeros(npoints) ))
-        vec = np.array([1, 0, 0]).T
-    elif axis == 'y':
-        points = np.column_stack((np.zeros(npoints), np.linspace(start, stop, npoints), np.zeros(npoints) ))
-        vec = np.array([0, 1, 0]).T
-    elif axis == 'z':
-        points = np.column_stack((np.zeros(npoints), np.zeros(npoints),  np.linspace(start, stop, npoints) ))
-        vec = np.array([0, 0, 1]).T
-    else:
-        print('Invalid axis')
-        return None
-
-    if u is not None:
-        u = np.array([u(p) for p in points])
-
-    if mu is not None:
-        mu = np.array([mu(p)*10**-12 for p in points])
-
-    stretches=None
-    if grad_u is not None:
-        du, F, R, U, C = deformation_tensors(points, grad_u)
-        vec = np.broadcast_to(vec, (npoints,3))
-        vec =np.ascontiguousarray(vec)
-        stretches = get_stretches(vec, C)
-
-    data = toDataFrame(points=points, u=u, mu=mu, grad_u=du, F=F, C=C, stretches=stretches)
-
-    return data
-
-def toVTK(fname, points, conn, pointData):
+def writeVTK(fname, points, conn, pointData):
 
     # x,y,z
     x = points[:,0]
@@ -341,6 +282,95 @@ def toVTK(fname, points, conn, pointData):
     unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  pointData=pointData)    
 
     return
+
+## Level Set Plots ================================================================================
+
+def adjacent_values(vals, q1, q3):
+    upper_adjacent_value = q3 + (q3 - q1) * 1.5
+    upper_adjacent_value = np.clip(upper_adjacent_value, q3, vals[-1])
+
+    lower_adjacent_value = q1 - (q3 - q1) * 1.5
+    lower_adjacent_value = np.clip(lower_adjacent_value, vals[0], q1)
+    return lower_adjacent_value, upper_adjacent_value
+
+def set_axis_style(ax, labels):
+    ax.get_xaxis().set_tick_params(direction='out')
+    ax.xaxis.set_ticks_position('bottom')
+    ax.set_xticks(np.arange(1, len(labels) + 1))
+    ax.set_xticklabels(labels)
+    ax.set_xlim(0.25, len(labels) + 0.75)
+    ax.set_xlabel('Isosurface multiplier')
+
+def plot_sets(factors, set_data, output_folder="./"):
+
+    disp = [data["umag"] for data in set_data.values()]
+
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+
+    ax.set_title('Displacement on Isosurfaces')
+    ax.set_ylabel(r'Displacement ($\mu$m)')
+    parts = ax.violinplot(dataset=disp,
+            showmeans=False, showmedians=False,
+            showextrema=False)
+
+    for pc in parts['bodies']:
+        pc.set_facecolor('xkcd:pale teal')
+        pc.set_edgecolor('black')
+        pc.set_alpha(1)
+
+    quartile1, medians, quartile3 = np.percentile(disp, [25, 50, 75], axis=1)
+    whiskers = np.array([
+        adjacent_values(sorted_array, q1, q3)
+        for sorted_array, q1, q3 in zip(disp, quartile1, quartile3)])
+    whiskersMin, whiskersMax = whiskers[:, 0], whiskers[:, 1]
+
+    inds = np.arange(1, len(medians) + 1)
+    ax.scatter(inds, medians, marker='o', color='white', s=30, zorder=3)
+    ax.vlines(inds, quartile1, quartile3, color='dimgrey', linestyle='-', lw=5)
+    ax.vlines(inds, whiskersMin, whiskersMax, color='dimgrey', linestyle='-', lw=1)
+
+    labels = [str(f) for f in factors]
+    set_axis_style(ax, labels)
+
+    plt.savefig(output_folder + 'isoplots.png', bbox_inches='tight')
+
+# Data over line ============================================================
+
+def data_over_line(point, direction, inc, bound, mu=None, u=None, grad_u=None):
+
+    point = np.array(point)
+    direction = np.array(direction)
+    points = point.reshape((1,3))
+
+    while(True):
+        nextpoint = points[-1] + direction*inc
+        if abs(nextpoint[0])>=bound or abs(nextpoint[2])>=bound or abs(nextpoint[2])>=bound:
+            break
+
+        points = np.vstack((points, nextpoint)) 
+
+    npoints = np.size(points, 0)
+
+    if u is not None:
+        u = np.array([u(p) for p in points])
+
+    if mu is not None:
+        mu = np.array([mu(p)*10**-12 for p in points])
+
+    stretches=None
+    if grad_u is not None:
+        du, F, R, U, C = deformation_tensors(points, grad_u)
+
+        v = np.broadcast_to(direction, (npoints,3))
+        v = np.ascontiguousarray(v)
+        stretches = get_stretches(v, C)
+
+    data = ArraystoDF(points=points, u=u, mu=mu, grad_u=du, F=F, C=C, stretches=stretches)
+
+    return data
+
+
+# Misc =========================================================================================================
 
 def tabulate3(u):
     u_arr = u.compute_vertex_values()  # 1-d numpy array
