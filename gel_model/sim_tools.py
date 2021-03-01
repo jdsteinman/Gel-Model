@@ -268,9 +268,9 @@ def ArraystoDF(points, normals=None, mu=None, u=None, grad_u=None, F=None, C=Non
 def writeVTK(fname, points, conn, pointData):
 
     # x,y,z
-    x = points[:,0]
-    y = points[:,1]
-    z = points[:,2]
+    x = np.ascontiguousarray(points[:,0], dtype="float64")
+    y = np.ascontiguousarray(points[:,1], dtype="float64")
+    z = np.ascontiguousarray(points[:,2], dtype="float64")
 
     # cell types
     ncells = np.size(conn, 0)
