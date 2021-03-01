@@ -190,7 +190,7 @@ def deformation_tensors(points, grad_u):
 
 def get_stretches(u, C):
     npoints = np.size(u, 0)
-    u.resize(npoints, 3, 1)
+    u = u.reshape(npoints, 3, 1)
     stretches = np.matmul(u.transpose(0, 2, 1), np.matmul(C, u)) ** 0.5
     return stretches.ravel()
 
@@ -265,7 +265,7 @@ def ArraystoDF(points, normals=None, mu=None, u=None, grad_u=None, F=None, C=Non
 
     return data
 
-def writeVTK(fname, points, conn, pointData):
+def writeVTK(fname, points, conn, pointData=None, cellData=None):
 
     # x,y,z
     x = np.ascontiguousarray(points[:,0], dtype="float64")
@@ -283,8 +283,15 @@ def writeVTK(fname, points, conn, pointData):
     # offset begins with 1
     offset = 3 * (np.arange(ncells, dtype='int64') + 1)    
 
-    unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  pointData=pointData)    
-
+    if pointData is not None and cellData is None:
+        unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  pointData=pointData)
+    elif pointData is None and cellData is not None:
+        unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  cellData=cellData)    
+    elif pointData is not None and cellData is not None:
+        unstructuredGridToVTK(fname, x, y, z, connectivity=conn_ravel, offsets=offset, cell_types = ctype,  pointData=pointData, cellData=cellData)
+    else:
+        print("Missing Data")  
+         
     return
 
 ## Level Set Plots ================================================================================
@@ -346,9 +353,10 @@ def data_over_line(point, direction, inc, bound, mu=None, u=None, grad_u=None):
     direction = np.array(direction)
     points = point.reshape((1,3))
 
-    while(True):
+    # 1000 Maximum points
+    for i in range(1000):
         nextpoint = points[-1] + direction*inc
-        if abs(nextpoint[0])>=bound or abs(nextpoint[2])>=bound or abs(nextpoint[2])>=bound:
+        if abs(nextpoint[0])>=bound or abs(nextpoint[1])>=bound or abs(nextpoint[2])>=bound:
             break
 
         points = np.vstack((points, nextpoint)) 
