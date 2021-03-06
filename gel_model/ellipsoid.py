@@ -26,6 +26,12 @@ Fenics simulation of ellipsoidal model with functionally graded gel
     - summary of simulation parameters (txt)
 """ 
 
+parameters['linear_algebra_backend'] = 'PETSc'
+parameters['form_compiler']['representation'] = 'uflacs'
+parameters['form_compiler']['optimize'] = True
+parameters['form_compiler']['cpp_optimize'] = True
+parameters['form_compiler']['quadrature_degree'] = 2
+
 ## Functions and Class Definitions =========================================================
 class shear_modulus(UserExpression):
     def __init__ (self, vert, conn, **kwargs):
@@ -46,8 +52,10 @@ class shear_modulus(UserExpression):
         r = np.amin(r)
 
         if r < self._rmax:
-            # value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power Model
-            value[0] = self._mu*0.5 + self._k*.01   # Step function
+            if k >= 0:
+                value[0] = self._mu*(r/self._rmax)**self._k + self._mu*.01  # Power function
+            else:
+                value[0] = self._mu*0.5 + self._k*.01   # Step function
         else:
             value[0] = self._mu * 1.01
 
@@ -129,7 +137,15 @@ def solver_call(u, du, bcs, mu, lmbda):
 
     # Create nonlinear variational problem and solve
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
+    #'''
     solver = NonlinearVariationalSolver(problem)
+    print(solver.parameters['newton_solver'].keys())
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
+    #solver.parameters['newton_solver']['linear_solver'] = 'cg'
+    #solver.parameters['newton_solver']['preconditioner'] = 'amg'
+    solver.parameters['newton_solver']['linear_solver'] = 'gmres'
+    solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
+    #'''
     solver.solve()
 
     return u, du, Jac
@@ -137,7 +153,7 @@ def solver_call(u, du, bcs, mu, lmbda):
 ### Simulation Setup ================================================================================
 
 ## Files
-tag = "step"
+tag = "uniform"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
@@ -153,7 +169,7 @@ surf_vert = np.array(surf_mesh.points)
 surf_conn = np.array(surf_mesh.cells[0].data)
 
 ## Function space
-V = VectorFunctionSpace(mesh, "CG", 1)
+V = VectorFunctionSpace(mesh, "CG", 2)
 
 ## Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
@@ -169,7 +185,7 @@ volume_number = 300
 nu = 0.49                        # Poisson's ratio
 mu_bulk = 325 * 10**12           # Bulk Modulus
 lmbda = 2*nu*mu_bulk / (1-2*nu)  # 1st Lame Parameter
-k = 0.                           # profile shape
+k = 0.                          # profile shape
 l = np.amax(mesh.coordinates())  # side length of gel
 rmax = 10                        # graded model region
 
@@ -177,7 +193,7 @@ mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-vert_disp = get_vert_disp(surf_vert, 0.5, 0.5, -1)
+vert_disp = get_vert_disp(surf_vert, 1, 1.5, -2)
 midpoints = get_midpoints(surf_mesh)
 midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
 face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
@@ -190,9 +206,15 @@ bcs.append(None)
 ## Functions
 du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)
+u.vector()[:] = 0
+
+def ellipsoid_surface(x, on_boundary):
+    return on_boundary and abs(x[0]) < 30 and abs(x[1]) < 30 and abs(x[2]) < 30
+u_D = Expression(["t*x[0]/10","t*x[1]/10","-t*x[2]/20"], t=0, degree=1)
+testbc = DirichletBC(V, u_D, ellipsoid_surface) 
 
 ## Run Sim ==================================================================================
-chunks = 10
+chunks = 2
 midpoint_disp /= chunks
 
 total_start = time.time()
@@ -201,10 +223,14 @@ for i in range(chunks):
     print("Solver Call: ", i)
     print("----------------")
 
+    """
     ## Inner BC
     face2disp_dict = dict(zip(face_map, midpoint_disp*(i+1)))
     boundary_func = inner_bc(mesh, face2disp_dict)
     bcs[-1] = DirichletBC(V, boundary_func, mf, inner_number)
+    """
+    u_D.t = (i+1)/chunks
+    bcs[-1] = testbc
 
     ## Solver
     u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
@@ -222,10 +248,10 @@ F = I + grad(u)      # Deformation gradient
 C = F.T*F            # Right Cauchy-Green tensor
 
 # Projections
-mu = project(mu, FunctionSpace(mesh, "DG", 1))
+mu = project(mu, FunctionSpace(mesh, "CG", 1))
 mu.set_allow_extrapolation(True)
 
-grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+grad_u = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
 grad_u.set_allow_extrapolation(True)
 
 ### Outputs ==================================================================================
@@ -237,6 +263,16 @@ set_data = save_sets(set_dict, surf_conn, mu, u, grad_u, output_folder)
 plot_sets(factors, set_data, output_folder)
 
 ## Table Outputs
+xpoint = [10,0,0]
+xdir = [1,0,0]
+xdata = data_over_line(xpoint, xdir, 0.1, l, mu, u, grad_u)
+xdata.to_csv(output_folder+"data_x.csv", sep=",")
+
+ypoint = [0,10,0]
+ydir = [0,1,0]
+ydata = data_over_line(ypoint, ydir, 0.1, l, mu, u, grad_u)
+ydata.to_csv(output_folder+"data_y.csv", sep=",")
+
 zpoint = [0,0,20]
 zdir = [0,0,1]
 zdata = data_over_line(zpoint, zdir, 0.1, l, mu, u, grad_u)

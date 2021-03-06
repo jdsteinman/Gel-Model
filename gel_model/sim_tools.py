@@ -251,6 +251,15 @@ def ArraystoDF(points, normals=None, mu=None, u=None, grad_u=None, F=None, C=Non
         # Eigenvalues/eigenvectors
         w, v = eig(C)
 
+        # Order by decreasing eigenvalue
+        sort_ind = np.argsort(w, axis=-1)
+        sort_ind = np.flip(sort_ind, axis=-1)
+        w = np.take_along_axis(w, sort_ind,-1)
+        w = np.sqrt(w)
+
+        for i, mat in enumerate(v):
+            mat = mat[:, sort_ind[i]]
+
         columns = ['w1', 'w2', 'w3']
         for col, dat in zip(columns, w.transpose()):
             data[col] = dat
