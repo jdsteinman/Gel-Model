@@ -5,10 +5,10 @@ import seaborn as sns
 import math
 
 # Inputs
-# data1 = pd.read_csv("../gel_model/output/uniform/data_z.csv", index_col=0)
+data1 = pd.read_csv("../../gel_model/output/uniform/data_z.csv", index_col=0)
 data2 = pd.read_csv("../../gel_model/output/step/data_z.csv", index_col=0)
 
-params = ["stretches", "F33", "mu"]
+params = ["umag", "F33", "C33", ]
 title = "along Z-axis"
 xlab = "Distance from cell surface"
 leg = ['uniform', 'step']
@@ -22,7 +22,7 @@ sns.set_theme(style="darkgrid")
 fig, ax = [], []
 for i, y in enumerate(params):
     f, a = plt.subplots(1,1)
-    # sns.lineplot(x='r', y=y, ci=None, data=data1, ax = a, label=leg[0])
+    sns.lineplot(x='r', y=y, ci=None, data=data1, ax = a, label=leg[0])
     sns.lineplot(x='r', y=y, ci=None, data=data2, ax = a, label=leg[1])
 
     if y == "mu": a.set_ylim(0, 350)
