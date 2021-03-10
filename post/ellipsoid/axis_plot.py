@@ -8,7 +8,7 @@ import math
 data1 = pd.read_csv("../../gel_model/output/uniform/data_z.csv", index_col=0)
 data2 = pd.read_csv("../../gel_model/output/step/data_z.csv", index_col=0)
 
-params = ["umag", "F33", "C33", ]
+params = ["uz", "g33"]
 title = "along Z-axis"
 xlab = "Distance from cell surface"
 leg = ['uniform', 'step']
