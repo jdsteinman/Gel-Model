@@ -8,7 +8,8 @@ from scipy.spatial import distance_matrix
 from matplotlib import pyplot as plt
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
-from sim_tools import generate_sets, save_sets, plot_sets, data_over_line
+from sim_tools import *
+from deformation_grad import def_grad
 
 """
 Written by: John Steinman
@@ -62,56 +63,6 @@ class shear_modulus(UserExpression):
     def value_shape(self):
         return ()
 
-class inner_bc(UserExpression):
-    def __init__(self, mesh, face2disp_dict, **kwargs):
-        self.mesh = mesh 
-        self._face_dict = face2disp_dict
-        super().__init__(**kwargs)
-
-    def value_shape(self):
-        return (3,)
-
-    def eval_cell(self, value, x, cell):
-        try:
-            value[0], value[1], value[2] = self._face_dict[cell.index]
-        except KeyError:
-            value[0], value[1], value[2] = (0, 0, 0)
-
-def get_vert_disp(vert, a, b, c):
-    vert_disp = np.zeros(vert.shape)
-    vert_disp[:,0] = a/10 * vert[:,0]
-    vert_disp[:,1] = b/10 * vert[:,1]
-    vert_disp[:,2] = c/20 * vert[:,2]
-
-    return vert_disp
-
-def get_midpoints(surf_mesh):
-    cell_dict = dict(surf_mesh.cells)
-    midpoints = np.zeros((cell_dict['triangle'].shape[0], 3))
-    for idx, triangle in enumerate(cell_dict['triangle']):
-        midpoints[idx] = surf_mesh.points[cell_dict['triangle'][idx]].mean(0)
-    return midpoints
-
-def get_midpoint_disp(vert_disp, faces):
-    midpoint_disp = np.zeros((faces.shape[0], 3))
-    for idx, face in enumerate(faces):
-        midpoint_disp[idx, :] = np.mean((vert_disp[face[0]],
-                                     vert_disp[face[1]],
-                                     vert_disp[face[2]]), axis=0)
-    return midpoint_disp
-
-def get_face_mapping(midpoints, mesh, mf, inner_number):
-    face_map = np.zeros(midpoints.shape[0])
-
-    for index, face in enumerate(faces(mesh)):
-        # if mesh face is on inner boundary
-        if mf.array()[index] == inner_number:
-            mesh_midpoint = face.midpoint().array().reshape((1,3)) 
-            dist_mat = distance_matrix(mesh_midpoint, midpoints)
-            face_map[np.argmin(dist_mat)] = face.entities(3)[0]
-
-    return face_map
-
 def solver_call(u, du, bcs, mu, lmbda):
     ## Kinematics
     B = Constant((0, 0, 0))  # Body force per unit volume
@@ -139,7 +90,7 @@ def solver_call(u, du, bcs, mu, lmbda):
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
     #'''
     solver = NonlinearVariationalSolver(problem)
-    # print(solver.parameters['newton_solver'].keys())
+    print(solver.parameters['newton_solver'].keys())
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
     #solver.parameters['newton_solver']['linear_solver'] = 'cg'
     #solver.parameters['newton_solver']['preconditioner'] = 'amg'
@@ -149,6 +100,7 @@ def solver_call(u, du, bcs, mu, lmbda):
     solver.solve()
 
     return u, du, Jac
+
 
 ### Simulation Setup ================================================================================
 
@@ -170,6 +122,9 @@ surf_conn = np.array(surf_mesh.cells[0].data)
 
 ## Function space
 V = VectorFunctionSpace(mesh, "CG", 2)
+du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
+u = Function(V)
+u.vector()[:] = 0
 
 ## Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
@@ -189,33 +144,25 @@ k = -1.                           # profile shape
 l = np.amax(mesh.coordinates())  # side length of gel
 rmax = 10                        # graded model region
 
+# mu = Expression(mu_compiled_code)
+# mu.muBulk = mu_bulk
+# mu.rmax = rmax
+# mu.k = k
+
 mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-# vert_disp = get_vert_disp(surf_vert, 0, 1, -2)
-# midpoints = get_midpoints(surf_mesh)
-# midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
-# face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
-
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
 bcs.append(DirichletBC(V, zero, mf, outer_number))
 bcs.append(None) 
 
-## Functions
-du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
-u = Function(V)
-u.vector()[:] = 0
-
-def ellipsoid_surface(x, on_boundary):
-    return on_boundary and abs(x[0]) < 30 and abs(x[1]) < 30 and abs(x[2]) < 30
-u_D = Expression(["t*x[0]*a/10","t*x[1]*b/10","-t*x[2]*c/20"], a=0, b=1, c=2, t=0, degree=1)
-compiled_bc = DirichletBC(V, u_D, ellipsoid_surface) 
+u_D = Expression(["t*x[0]*a/10", "t*x[1]*b/10", "-t*x[2]*c/20"], a=0, b=1, c=2, t=0, degree=1)
+testbc = DirichletBC(V, u_D, mf, inner_number) 
 
 ## Run Sim ==================================================================================
 chunks = 2
-# midpoint_disp /= chunks
 
 total_start = time.time()
 for i in range(chunks):
@@ -223,14 +170,9 @@ for i in range(chunks):
     print("Solver Call: ", i)
     print("----------------")
 
-    """
-    ## Inner BC
-    face2disp_dict = dict(zip(face_map, midpoint_disp*(i+1)))
-    boundary_func = inner_bc(mesh, face2disp_dict)
-    bcs[-1] = DirichletBC(V, boundary_func, mf, inner_number)
-    """
+    # Increment Boundary Conditions
     u_D.t = (i+1)/chunks
-    bcs[-1] = compiled_bc
+    bcs[-1] = testbc
 
     ## Solver
     u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
@@ -241,26 +183,42 @@ for i in range(chunks):
 print("Total Time: ", time.time() - total_start)
 u.set_allow_extrapolation(True) # Temp fix for evaluating on surface
 
-# Deformation
-d = u.geometric_dimension()
-I = Identity(d)      # Identity tensor
-F = I + grad(u)      # Deformation gradient
-C = F.T*F            # Right Cauchy-Green tensor
-
 # Projections
 mu = project(mu, FunctionSpace(mesh, "CG", 1))
 mu.set_allow_extrapolation(True)
 
-grad_u = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+grad_space = TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3))
+grad_u = project(grad(u), V=grad_space, solver_type = 'cg', preconditioner_type = 'amg')
 grad_u.set_allow_extrapolation(True)
-
-### Outputs ==================================================================================
 
 ## Isosurfaces
 factors = [1.01, 1.2, 1.4, 1.6, 1.8, 2]
 set_dict = generate_sets(factors, surf_vert)
 set_data = save_sets(set_dict, surf_conn, mu, u, grad_u, output_folder)
-plot_sets(factors, set_data, output_folder)
+
+## Deformation Test
+points = scale_radius(surf_vert, 1.2)
+normals = get_surface_normals(points, surf_conn)
+F = def_grad(surf_vert, normals, u)
+df = ArraystoDF(points, F=F)
+point_data = {}
+for column in df:
+    skips = ['x', 'y', 'z', 'r']
+    if column in skips: continue
+
+    dat = np.ascontiguousarray(df[column],  dtype=np.float32)
+    point_data[column] = dat
+
+writeVTK(output_folder + "F" + "1.2", points, surf_conn, point_data)
+
+## XDMF Outputs
+disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
+u.rename("u","displacement")
+disp_file.write(u)
+
+grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
+grad_u.rename("grad_u","displacement gradient")
+grad_file.write(grad_u)
 
 ## Table Outputs
 xpoint = [10,0,0]
@@ -277,25 +235,3 @@ zpoint = [0,0,20]
 zdir = [0,0,1]
 zdata = data_over_line(zpoint, zdir, 0.1, l, mu, u, grad_u)
 zdata.to_csv(output_folder+"data_z.csv", sep=",")
-
-# XDMF Outputs
-mu_file = XDMFFile(output_folder + "mu_" + tag + ".xdmf")
-mu.rename("mu", "shear_modulus")
-mu_file.write(mu)
-
-disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
-u.rename("u","displacement")
-disp_file.write(u)
-
-grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
-grad_u.rename("grad_u","displacement gradient")
-grad_file.write(grad_u)
-
-## Save Simulation Parameters
-f = open(output_folder + "profile.txt", "w+")
-f.write("mu(r) = mu_bulk * (r/r_max) ** k")
-f.write("\nk = " + str(k))
-f.write("\nmu_bulk = " + str(mu_bulk))
-f.write("\nlambda = " + str(lmbda))
-f.write("\rmax = " + str(rmax))
-f.close()

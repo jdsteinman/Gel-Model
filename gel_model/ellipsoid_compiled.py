@@ -62,56 +62,6 @@ class shear_modulus(UserExpression):
     def value_shape(self):
         return ()
 
-class inner_bc(UserExpression):
-    def __init__(self, mesh, face2disp_dict, **kwargs):
-        self.mesh = mesh 
-        self._face_dict = face2disp_dict
-        super().__init__(**kwargs)
-
-    def value_shape(self):
-        return (3,)
-
-    def eval_cell(self, value, x, cell):
-        try:
-            value[0], value[1], value[2] = self._face_dict[cell.index]
-        except KeyError:
-            value[0], value[1], value[2] = (0, 0, 0)
-
-def get_vert_disp(vert, a, b, c):
-    vert_disp = np.zeros(vert.shape)
-    vert_disp[:,0] = a/10 * vert[:,0]
-    vert_disp[:,1] = b/10 * vert[:,1]
-    vert_disp[:,2] = c/20 * vert[:,2]
-
-    return vert_disp
-
-def get_midpoints(surf_mesh):
-    cell_dict = dict(surf_mesh.cells)
-    midpoints = np.zeros((cell_dict['triangle'].shape[0], 3))
-    for idx, triangle in enumerate(cell_dict['triangle']):
-        midpoints[idx] = surf_mesh.points[cell_dict['triangle'][idx]].mean(0)
-    return midpoints
-
-def get_midpoint_disp(vert_disp, faces):
-    midpoint_disp = np.zeros((faces.shape[0], 3))
-    for idx, face in enumerate(faces):
-        midpoint_disp[idx, :] = np.mean((vert_disp[face[0]],
-                                     vert_disp[face[1]],
-                                     vert_disp[face[2]]), axis=0)
-    return midpoint_disp
-
-def get_face_mapping(midpoints, mesh, mf, inner_number):
-    face_map = np.zeros(midpoints.shape[0])
-
-    for index, face in enumerate(faces(mesh)):
-        # if mesh face is on inner boundary
-        if mf.array()[index] == inner_number:
-            mesh_midpoint = face.midpoint().array().reshape((1,3)) 
-            dist_mat = distance_matrix(mesh_midpoint, midpoints)
-            face_map[np.argmin(dist_mat)] = face.entities(3)[0]
-
-    return face_map
-
 def solver_call(u, du, bcs, mu, lmbda):
     ## Kinematics
     B = Constant((0, 0, 0))  # Body force per unit volume
@@ -139,7 +89,7 @@ def solver_call(u, du, bcs, mu, lmbda):
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
     #'''
     solver = NonlinearVariationalSolver(problem)
-    # print(solver.parameters['newton_solver'].keys())
+    print(solver.parameters['newton_solver'].keys())
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
     #solver.parameters['newton_solver']['linear_solver'] = 'cg'
     #solver.parameters['newton_solver']['preconditioner'] = 'amg'
@@ -153,7 +103,7 @@ def solver_call(u, du, bcs, mu, lmbda):
 ### Simulation Setup ================================================================================
 
 ## Files
-tag = "step012"
+tag = "interpolate"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
@@ -170,6 +120,9 @@ surf_conn = np.array(surf_mesh.cells[0].data)
 
 ## Function space
 V = VectorFunctionSpace(mesh, "CG", 2)
+du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
+u = Function(V)
+u.vector()[:] = 0
 
 ## Subdomain markers
 mvc = MeshValueCollection("size_t", mesh, 2)
@@ -185,37 +138,25 @@ volume_number = 300
 nu = 0.49                        # Poisson's ratio
 mu_bulk = 325 * 10**12           # Bulk Modulus
 lmbda = 2*nu*mu_bulk / (1-2*nu)  # 1st Lame Parameter
-k = -1.                           # profile shape
+k = 0.                           # profile shape
 l = np.amax(mesh.coordinates())  # side length of gel
 rmax = 10                        # graded model region
 
 mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
-##  Boundary Conditions
-# vert_disp = get_vert_disp(surf_vert, 0, 1, -2)
-# midpoints = get_midpoints(surf_mesh)
-# midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
-# face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
-
+## Outer BC
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
 bcs.append(DirichletBC(V, zero, mf, outer_number))
 bcs.append(None) 
 
-## Functions
-du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
-u = Function(V)
-u.vector()[:] = 0
-
-def ellipsoid_surface(x, on_boundary):
-    return on_boundary and abs(x[0]) < 30 and abs(x[1]) < 30 and abs(x[2]) < 30
+# Inner BC
 u_D = Expression(["t*x[0]*a/10","t*x[1]*b/10","-t*x[2]*c/20"], a=0, b=1, c=2, t=0, degree=1)
-compiled_bc = DirichletBC(V, u_D, ellipsoid_surface) 
+testbc = DirichletBC(V, u_D, mf, inner_number) 
 
 ## Run Sim ==================================================================================
 chunks = 2
-# midpoint_disp /= chunks
 
 total_start = time.time()
 for i in range(chunks):
@@ -223,14 +164,9 @@ for i in range(chunks):
     print("Solver Call: ", i)
     print("----------------")
 
-    """
-    ## Inner BC
-    face2disp_dict = dict(zip(face_map, midpoint_disp*(i+1)))
-    boundary_func = inner_bc(mesh, face2disp_dict)
-    bcs[-1] = DirichletBC(V, boundary_func, mf, inner_number)
-    """
+    # Increment Inner BC
     u_D.t = (i+1)/chunks
-    bcs[-1] = compiled_bc
+    bcs[-1] = testbc
 
     ## Solver
     u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
