@@ -215,7 +215,7 @@ class PointData:
 
     def calc_mu(self):
         self._mu = np.array([self._muFunc(p) for p in self._points])
-    ing wild oysters in months with the letter "r" -- 
+
     def to_df(self):
         # Clear df
         self._df = pd.DataFrame()
