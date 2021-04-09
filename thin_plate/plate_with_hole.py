@@ -7,25 +7,23 @@ parameters['form_compiler']['optimize'] = True
 parameters['form_compiler']['cpp_optimize'] = True
 parameters['form_compiler']['quadrature_degree'] = 2
 
+"""
+Written by: John Steinman
+Simulation of hyperelastic thin plate with circular hole. 
+Inner boundary is prescribed a displacement and outer boundary is fixed.
+
+Outputs:
+    - Displacement (u) : xdmf
+    - Deformation Gradient (F) : xdmf
+"""
+
+
 def main():
 
     # Mesh
     mesh = Mesh("./meshes/plate_with_hole.xml")
 
-    # mesh = Mesh()
-    # with XDMFFile("./meshes/plate_with_hole_triangle.xdmf") as infile:
-    #     infile.read(mesh)
-
-    # mvc = MeshValueCollection("size_t", mesh, 1)
-    # with XDMFFile("./meshes/plate_with_hole_line.xdmf") as infile:
-    #     infile.read(mvc, "line")
-
-    # mf = cpp.mesh.MeshFunctionSizet(mesh, mvc)
-
-    # U = VectorElement("CG", mesh.ufl_cell(), degree=2, dim=2)
-    # V = VectorFunctionSpace(mesh, "CG", dergree=2, dim=2)
-    # print(V.num_sub_spaces())
-
+    # Function Space
     U = VectorElement('Lagrange', mesh.ufl_cell(), 2)
     V = FunctionSpace(mesh, U)
 
@@ -104,15 +102,11 @@ def solver_call(u, du, w, bcs):
 
     # Create nonlinear variational problem and solve
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
-    #'''
+
     solver = NonlinearVariationalSolver(problem)
-    # print(solver.parameters['newton_solver'].keys())
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
-    #solver.parameters['newton_solver']['linear_solver'] = 'cg'
-    #solver.parameters['newton_solver']['preconditioner'] = 'amg'
     solver.parameters['newton_solver']['linear_solver'] = 'gmres'
     solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
-    #'''
     solver.solve()
 
     return u, du
