@@ -1,3 +1,4 @@
+import os
 import meshio
 import numpy as np
 
@@ -8,13 +9,13 @@ Outputs:
     - vertices/connectivity as .txt files
 """
 
-path = "./ellipsoid/"
+dirname = os.path.dirname(__file__)
+path = "/ellipsoid/"
 filename = "ellipsoid"
-
 physical_num = 201  # physical number marking surface
 
 # Read mesh
-msh = meshio.read(path + filename + ".msh")
+msh = meshio.read(dirname + path + filename + ".msh")
 
 # Get triangle and tet connectivity
 for cell in msh.cells:
@@ -58,9 +59,9 @@ surf_vert = np.array(surf_vert)
 
 # Save mesh
 surface_mesh = meshio.Mesh(points=surf_vert, cells=[("triangle", surf_cells)])
-meshio.write(path + filename +  "_surface.xdmf", surface_mesh)
+meshio.write(dirname + path + filename +  "_surface.xdmf", surface_mesh)
 
 # txt output
-np.savetxt(path + "vertices.txt", vertices, delimiter=" ")
-np.savetxt(path + "surf_vertices.txt", surf_vert, delimiter=" ")
-np.savetxt(path + "surf_faces.txt", surf_cells, delimiter=" ", fmt='%d')
+# np.savetxt(path + "points.txt", vertices, delimiter=" ")
+np.savetxt(dirname + path + "surface_points.txt", surf_vert, delimiter=",")
+np.savetxt(dirname + path + "surface_faces.txt", surf_cells, delimiter=",", fmt='%d')
