@@ -3,9 +3,15 @@ import time
 import numpy as np
 import numpy.linalg as LA
 import pandas as pd
-import sim_tools as st
 from dolfin import *
 from matplotlib import pyplot as plt
+from classes import LineData
+
+parameters['linear_algebra_backend'] = 'PETSc'
+parameters['form_compiler']['representation'] = 'uflacs'
+parameters['form_compiler']['optimize'] = True
+parameters['form_compiler']['cpp_optimize'] = True
+parameters['form_compiler']['quadrature_degree'] = 2
 
 def solver_call(u, du, bcs, mu, lmbda):
 
@@ -39,6 +45,12 @@ def solver_call(u, du, bcs, mu, lmbda):
     # Create nonlinear variational problem and solve
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
     solver = NonlinearVariationalSolver(problem)
+    # print(solver.parameters['newton_solver'].keys())
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
+    #solver.parameters['newton_solver']['linear_solver'] = 'cg'
+    #solver.parameters['newton_solver']['preconditioner'] = 'amg'
+    solver.parameters['newton_solver']['linear_solver'] = 'gmres'
+    solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
     solver.solve()
 
     return u
@@ -50,25 +62,28 @@ if not os.path.exists(output_folder):
 tag = ["step","Uniform"]
 
 mesh = BoxMesh(Point(0.0, -0.5, -0.5), Point(10.0, 0.5, 0.5), 100, 10, 10)
-V = VectorFunctionSpace(mesh, "CG", 1)
+V = VectorFunctionSpace(mesh, "CG", 2)
 V0 = FunctionSpace(mesh, "DG", 1)
 
 # Define Boundary Conditions
 left =  CompiledSubDomain("near(x[0], side) && on_boundary", side = 0.0)
 right = CompiledSubDomain("near(x[0], side) && on_boundary", side = 10.0)
+sides = CompiledSubDomain("on_boundary && (near(abs(x[1]), side) || near(abs(x[2]), side))", side=0.5)
 
 zero = Constant((0.0, 0.0, 0.0))
-u_b = Constant((-1.0, 0.0, 0.0))
+u_b = Constant((-1, 0.0, 0.0))
 
 bc1 = DirichletBC(V, u_b, left) 
 bc2 = DirichletBC(V, zero, right)
-bcs = [bc1, bc2]
+bc3 = DirichletBC(V.sub(1), Constant(0), sides)
+bc4 = DirichletBC(V.sub(2), Constant(0), sides)
+
+bcs = [bc1, bc2, bc3, bc4]
 
 # Sim
 lmbda = 1.5925 * 10**16
 mu_bulk = 325 * 10**12  # Bulk Modulus
 mu_expr = []
-# mu_expr.append(Expression("mu_bulk", degree=1, mu_bulk = mu_bulk))
 mu_expr.append(Expression("(x[0] < 5) ? mu_bulk/2 : mu_bulk", degree=1, mu_bulk = mu_bulk))
 
 total_start = time.time()
@@ -85,15 +100,27 @@ for i, mu in enumerate(mu_expr):
 
     # Projections
     mu = project(mu, FunctionSpace(mesh, "DG", 1))
-    grad_u = project(grad(u), TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
-    C = project(C, TensorFunctionSpace(mesh, "DG", 0, shape=(3, 3)))
+    grad_u = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)))
 
     # Plot
     point = [0.01, 0, 0]
     direction = [1, 0, 0]
-    bounds = 10
+    bound = 10
 
-    data = st.data_over_line(point, direction, 0.01, bounds, mu, u, grad_u)
-    data.to_csv(output_folder+"data.csv", sep=",")
+    data = LineData(u, grad_u, mu, point, direction, bound)
+    data.save_to_csv(output_folder + "bar.txt")
+
+    ## XDMF Outputs
+    disp_file = XDMFFile(output_folder + "displacement_" + tag[i] + ".xdmf")
+    u.rename("u","displacement")
+    disp_file.write(u)
+
+    grad_space = TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3))
+    grad_u = project(grad(u), V=grad_space, solver_type = 'cg', preconditioner_type = 'amg')
+    grad_u.set_allow_extrapolation(True)
+
+    grad_file = XDMFFile(output_folder + "gradient_" + tag[i] + ".xdmf")
+    grad_u.rename("grad_u","displacement gradient")
+    grad_file.write(grad_u)
 
 print("Total Time: ", time.time() - total_start)

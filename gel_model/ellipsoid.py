@@ -5,10 +5,7 @@ import numpy as np
 import pandas as pd
 from dolfin import *
 from scipy.spatial import distance_matrix
-from matplotlib import pyplot as plt
-from pyevtk.hl import unstructuredGridToVTK
-from pyevtk.vtk import VtkTriangle
-from sim_tools import generate_sets, save_sets, plot_sets, data_over_line
+from classes import Isosurfaces, LineData
 
 """
 Written by: John Steinman
@@ -20,7 +17,7 @@ Fenics simulation of ellipsoidal model with functionally graded gel
         - k = 1:     linear
         - k > 1:     convex
 - outputs:
-    - displacement, gradient, and Jacobian fields (XDMF)
+    - displacement and deformation gradient fields (XDMF)
     - displacement on isosurfaces (VTK)
     - displacement at each vertex (txt)
     - summary of simulation parameters (txt)
@@ -148,12 +145,12 @@ def solver_call(u, du, bcs, mu, lmbda):
     #'''
     solver.solve()
 
-    return u, du, Jac
+    return u, du
 
 ### Simulation Setup ================================================================================
 
 ## Files
-tag = "step012"
+tag = "test"
 mesh_path = "../meshes/ellipsoid/"
 output_folder = "./output/" + tag + "/"
 if not os.path.exists(output_folder):
@@ -193,10 +190,10 @@ mu = shear_modulus(surf_vert, surf_conn)
 mu.set_params(mu_bulk, k, rmax)
 
 ##  Boundary Conditions
-# vert_disp = get_vert_disp(surf_vert, 0, 1, -2)
-# midpoints = get_midpoints(surf_mesh)
-# midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
-# face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
+vert_disp = get_vert_disp(surf_vert, 0, 1, -2)
+midpoints = get_midpoints(surf_mesh)
+midpoint_disp = get_midpoint_disp(vert_disp, surf_conn)
+face_map = get_face_mapping(midpoints, mesh, mf, inner_number)
 
 zero = Constant((0.0, 0.0, 0.0))
 bcs = []
@@ -208,14 +205,9 @@ du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
 u = Function(V)
 u.vector()[:] = 0
 
-def ellipsoid_surface(x, on_boundary):
-    return on_boundary and abs(x[0]) < 30 and abs(x[1]) < 30 and abs(x[2]) < 30
-u_D = Expression(["t*x[0]*a/10","t*x[1]*b/10","-t*x[2]*c/20"], a=0, b=1, c=2, t=0, degree=1)
-compiled_bc = DirichletBC(V, u_D, ellipsoid_surface) 
-
 ## Run Sim ==================================================================================
 chunks = 2
-# midpoint_disp /= chunks
+midpoint_disp /= chunks
 
 total_start = time.time()
 for i in range(chunks):
@@ -223,60 +215,44 @@ for i in range(chunks):
     print("Solver Call: ", i)
     print("----------------")
 
-    """
     ## Inner BC
     face2disp_dict = dict(zip(face_map, midpoint_disp*(i+1)))
     boundary_func = inner_bc(mesh, face2disp_dict)
     bcs[-1] = DirichletBC(V, boundary_func, mf, inner_number)
-    """
-    u_D.t = (i+1)/chunks
-    bcs[-1] = compiled_bc
 
     ## Solver
-    u, du, Jac = solver_call(u, du, bcs, mu, lmbda)
+    u, du = solver_call(u, du, bcs, mu, lmbda)
 
     print("Time: ", time.time() - iter_start)
     print()
 
 print("Total Time: ", time.time() - total_start)
-u.set_allow_extrapolation(True) # Temp fix for evaluating on surface
 
 # Deformation
 d = u.geometric_dimension()
 I = Identity(d)      # Identity tensor
 F = I + grad(u)      # Deformation gradient
-C = F.T*F            # Right Cauchy-Green tensor
 
 # Projections
 mu = project(mu, FunctionSpace(mesh, "CG", 1))
-mu.set_allow_extrapolation(True)
-
-grad_u = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
-grad_u.set_allow_extrapolation(True)
+F = project(grad(u), TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
 
 ### Outputs ==================================================================================
 
 ## Isosurfaces
-factors = [1.01, 1.2, 1.4, 1.6, 1.8, 2]
-set_dict = generate_sets(factors, surf_vert)
-set_data = save_sets(set_dict, surf_conn, mu, u, grad_u, output_folder)
-plot_sets(factors, set_data, output_folder)
+sets = [1.01, 1.2, 1.4, 1.6, 1.8, 2]
+iso = Isosurfaces(sets, surf_vert, surf_conn, u, F, mu)
+iso.save_sets(output_folder)
 
-## Table Outputs
-xpoint = [10,0,0]
-xdir = [1,0,0]
-xdata = data_over_line(xpoint, xdir, 0.1, l, mu, u, grad_u)
-xdata.to_csv(output_folder+"data_x.csv", sep=",")
+## Data over line
+xdata = LineData(u, F, mu, [10.1,0,0], [1,0,0], length)
+xdata.save_to_csv(fname = output_folder + "Xdata.csv")
 
-ypoint = [0,10,0]
-ydir = [0,1,0]
-ydata = data_over_line(ypoint, ydir, 0.1, l, mu, u, grad_u)
-ydata.to_csv(output_folder+"data_y.csv", sep=",")
+ydata = LineData(u, F, mu, [0,10.1,0], [0,1,0], length)
+ydata.save_to_csv(fname = output_folder + "Ydata.csv")
 
-zpoint = [0,0,20]
-zdir = [0,0,1]
-zdata = data_over_line(zpoint, zdir, 0.1, l, mu, u, grad_u)
-zdata.to_csv(output_folder+"data_z.csv", sep=",")
+zdata = LineData(u, F, mu, [0,0,20.1], [0,0,1], length)
+zdata.save_to_csv(fname = output_folder + "Zdata.csv")
 
 # XDMF Outputs
 mu_file = XDMFFile(output_folder + "mu_" + tag + ".xdmf")
@@ -287,9 +263,9 @@ disp_file = XDMFFile(output_folder + "displacement_" + tag + ".xdmf")
 u.rename("u","displacement")
 disp_file.write(u)
 
-grad_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
-grad_u.rename("grad_u","displacement gradient")
-grad_file.write(grad_u)
+F_file = XDMFFile(output_folder + "gradient_" + tag + ".xdmf")
+F.rename("grad_u","deformation gradient")
+F_file.write(F)
 
 ## Save Simulation Parameters
 f = open(output_folder + "profile.txt", "w+")

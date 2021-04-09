@@ -106,7 +106,7 @@ def solver_call(u, du, bcs):
 date_str = "06092019"
 gel_str = "1"
 path = "../data/" + date_str + "_G" + gel_str + "/"
-chunks = int(100) # How many steps to you want to break the prescribed displacement into? # what does this actually do?
+chunks = int(100) # How many steps to you want to break the prescribed displacement into? 
 output_folder = "output/" + date_str + "_G" + gel_str + "_uncentered_unpca"
 cytod_surf = meshio.read(path + "cytod_uncentered_unpca" + ".msh")
 cytod_faces = cytod_surf.cells[0].data

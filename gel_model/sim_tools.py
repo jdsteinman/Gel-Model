@@ -6,7 +6,7 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import seaborn as sb
 from numpy.linalg import eig
-from scipy.linalg import polar
+from scipy.linalg import polar, inv
 from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle
 from dolfin import Function as fenicsFunc
@@ -17,9 +17,19 @@ plot stuff, and more.
 """
 ## Normalize an array of 3-component vectors
 def normalize(a):
-    ss = np.sum(a**2, axis=1)**0.5
-    a = a / ss[:, np.newaxis]
-    return a
+
+    arr = np.asarray(a)
+
+    assert(np.ndim(arr) <= 2)
+
+    if arr.ndim == 1:
+        ss = np.sum(arr**2)**0.5
+        arr = arr/ss
+    elif arr.ndim == 2:
+        ss = np.sum(arr**2, axis=1)**0.5
+        arr = arr / ss[:, np.newaxis]
+
+    return arr
 
 ## Coordinate conversions
 def cart2pol(x, y, z):
@@ -51,8 +61,7 @@ def scale_radius(vertices, k):
     
     return cart_vert
 
-## compare with fenics function
-
+## Surface Normals
 def get_surface_normals(vert, conn):
      # Check type
     vert = np.asarray(vert, dtype="float64")
@@ -89,6 +98,9 @@ def dots(disp, norms):
     dp = np.sum(disp*norms, axis=1)
 
     return dp
+
+"""
+Converted to classes
 
 
 ## Isosurface Outputs ========================================================================
@@ -128,7 +140,7 @@ def save_sets(set_dict, conn, mu=None, u=None, grad_u=None, output_folder="./"):
     return set_data
 
 
-def create_point_data(points, conn, mu, u, grad_u):
+def create_point_data(points, conn, mu=None, u=None, grad_u=None):
     
     # Surface normals
     normals = get_surface_normals(points, conn)
@@ -398,3 +410,111 @@ def tabulate3(u):
     length = np.shape(u_arr)[0]
     u_arr = np.reshape(u_arr, (length//3, 3), order="F") # Fortran ordering
     return u_arr
+
+"""
+# Alex's Deformation Gradient Method
+def def_grad(points, normals, u):
+
+    npoints = points.shape[0]
+    F = np.zeros((npoints, 3, 3))
+
+    # Get two perpendicular vectors
+    for i, n in enumerate(normals):
+        # Choose two perpendicular vectors
+        v = np.array([0, 0, 0])
+        x = np.array([1, 0, 0])
+        y = np.array([0, 1,  0])
+        
+        if np.allclose(n, x):
+            v = y
+        else:
+            v = x
+
+        # Find perpendicular vectors to n
+        a = np.cross(n, v) 
+        b = np.cross(n, a) 
+
+        a = normalize(a) * 2
+        b = normalize(b) * 2
+
+        # create box
+        p = points[i]
+        box = np.zeros((8,3))
+
+        box[0] = p + a + b
+        box[1] = p + a - b
+        box[2] = p - a + b
+        box[3] = p - a - b
+        box[4] = p + a + b + 4*n
+        box[5] = p + a - b + 4*n
+        box[6] = p - a + b + 4*n
+        box[7] = p - a - b + 4*n
+        xbar   =  np.mean(box, 0)
+        vectors = box - xbar
+
+        # Deformed box
+        dbox = np.zeros(box.shape)
+        for j, vert in enumerate(box):
+            dbox[j] = vert + u(vert)
+
+        dvectors = dbox - (xbar + u(xbar))
+
+        # Solve for F:  F*vectos = dvectors
+        x = vectors.T
+        b = dvectors.T
+
+        F[i,:,:] = b@x.T@inv(x@x.T)
+
+    return F
+
+    npoints = points.shape[0]
+    F = np.zeros((npoints, 3, 3))
+
+    # Get two perpendicular vectors
+    for i, n in enumerate(normals):
+        # Choose two perpendicular vectors
+        v = np.array([0, 0, 0])
+        x = np.array([1, 0, 0])
+        y = np.array([0, 1,  0])
+        
+        if np.allclose(n, x):
+            v = y
+        else:
+            v = x
+
+        # Find perpendicular vectors to n
+        a = np.cross(n, v) 
+        b = np.cross(n, a) 
+
+        a = normalize(a) * 2
+        b = normalize(b) * 2
+
+        # create box
+        p = points[i]
+        box = np.zeros((8,3))
+
+        box[0] = p + a + b
+        box[1] = p + a - b
+        box[2] = p - a + b
+        box[3] = p - a - b
+        box[4] = p + a + b + 4*n
+        box[5] = p + a - b + 4*n
+        box[6] = p - a + b + 4*n
+        box[7] = p - a - b + 4*n
+        xbar   =  np.mean(box, 0)
+        vectors = box - xbar
+
+        # Deformed box
+        dbox = np.zeros(box.shape)
+        for j, vert in enumerate(box):
+            dbox[j] = vert + u(vert)
+
+        dvectors = dbox - (xbar + u(xbar))
+
+        # Solve for F:  F*vectos = dvectors
+        x = vectors.T
+        b = dvectors.T
+
+        F[i,:,:] = b@x.T@inv(x@x.T)
+
+    return F
