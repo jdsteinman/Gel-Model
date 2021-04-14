@@ -1,5 +1,7 @@
 from dolfin import *
 import numpy as np
+import sys
+import os
 
 parameters['linear_algebra_backend'] = 'PETSc'
 parameters['form_compiler']['representation'] = 'uflacs'
@@ -12,13 +14,25 @@ Written by: John Steinman
 Simulation of hyperelastic thin plate with circular hole. 
 Inner boundary is prescribed a displacement and outer boundary is fixed.
 
+Test Cases:
+    a. Uniform radial contraction
+    b. Contraction in y only
+    c. Contraction in y, expansion in x
+
 Outputs:
     - Displacement (u) : xdmf
     - Deformation Gradient (F) : xdmf
 """
 
-
 def main():
+
+    # Select case
+    case = "a"
+
+    # Output folder
+    output_folder = "./output" + case + "/"
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
     # Mesh
     mesh = Mesh("./meshes/plate_with_hole.xml")
@@ -40,24 +54,36 @@ def main():
     outer.mark(mf, 2)
 
     zero = Constant((0.0, 0.0))
-    u_d = Expression(["-x[0]/10","-x[1]/10"], degree=2)
+    u_a = Expression(["-x[0]/10","-x[1]/10"], degree=2)
+    u_b = Expression("-x[1]/10", degree=2)
+    u_c = Expression(["x[0]/10","-x[1]/10"], degree=2)
 
     outer_bc = DirichletBC(V, zero, mf, 2)
-    inner_bc = DirichletBC(V, u_d, mf, 1)
+
+    if case=="a":
+        inner_bc = DirichletBC(V, u_a, mf, 1)
+    elif case=="b":
+        inner_bc = DirichletBC(V.sub(1), u_b, mf, 1)
+    elif case=="c":
+        inner_bc = DirichletBC(V, u_c, mf, 1)
+    else:
+        print("Invalid case: ", case)
+        sys.exit()
+
     bcs = [inner_bc, outer_bc]
 
     # Solver
     u, du = solver_call(u, du, w, bcs)
 
     F = Identity(2) + grad(u)
-    F =  project(F, V=TensorFunctionSpace(mesh, "CG", 1, shape=(2, 2)), solver_type = 'cg', preconditioner_type = 'amg')
+    F = project(F, V=TensorFunctionSpace(mesh, "CG", 1, shape=(2, 2)), solver_type = 'cg', preconditioner_type = 'amg')
 
     # Outputs
-    disp_file = XDMFFile("./output/U.xdmf")
+    disp_file = XDMFFile(output_folder + "U.xdmf")
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = XDMFFile("./output/F.xdmf")
+    F_file = XDMFFile(output_folder + "F.xdmf")
     F.rename("F","deformation gradient")
     F_file.write(F)
 
@@ -71,7 +97,6 @@ class inner_boundary(SubDomain):
         cond = abs(x[0])<20 and abs(x[1])<20 
         return on_boundary and cond
 
-
 def solver_call(u, du, w, bcs):
     ## Kinematics
     B = Constant((0, 0))  # Body force per unit volume
@@ -81,27 +106,27 @@ def solver_call(u, du, w, bcs):
     F = I + grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
 
+    # Invariants of deformation tensors
+    Ic = tr(C)
+    J = det(F)
+
     # Material parameters
     nu = 0.49                        # Poisson's ratio
     mu = Constant(325 * 10**12)      # Bulk Modulus
     lmbda = 2*nu*mu/ (1-2*nu)        # 1st Lame Parameter
 
-    ## Invariants of deformation tensors
-    Ic = tr(C)
-    Jac = det(F)
+    # Stored strain energy density (compressible neo-Hookean model)
+    psi = (mu/2)*(Ic - 3) - mu*ln(J) + (lmbda/2)*(ln(J))**2
 
-    ## Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
-
-    ## Total potential energy
+    # Total potential energy
     Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
 
-    ## Compute first variation of Pi (directional derivative about u in the direction of v)
+    # Compute first variation of Pi (directional derivative about u in the direction of v)
     F = derivative(Pi, u, w)
-    J = derivative(F, u, du)
+    Jac = derivative(F, u, du)
 
     # Create nonlinear variational problem and solve
-    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
+    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
 
     solver = NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2

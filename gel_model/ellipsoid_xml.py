@@ -28,17 +28,17 @@ def solver_call(u, du, w, bcs, mu, lmbda):
 
     ## Invariants of deformation tensors
     Ic = tr(C)
-    Jac  = det(F)
+    J  = det(F)
 
     ## Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
+    psi = (mu/2)*(Ic - 3) - mu*ln(J) + (lmbda/2)*(ln(J))**2
 
     ## Total potential energy
     Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
 
     ## Compute first variation of Pi (directional derivative about u in the direction of v)
     F = derivative(Pi, u, w)
-    J = derivative(F, u, du)
+    Jac = derivative(F, u, du)
 
     # Create nonlinear variational problem and solve
     problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)

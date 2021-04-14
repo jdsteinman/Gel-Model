@@ -3,10 +3,10 @@ SetFactory("OpenCASCADE");
 fine = 0.1;
 coarse = 2.0;
 
-s = 50;
-r = 5;
+s = 100;
+r = 10;
 
-Rectangle(1) = {-s, -s, 0, 2*s, 2*s};
+Rectangle(1) = {-s/2, -s/2, 0, s, s};
 Disk(2) = {0,0,0,r};
 
 BooleanDifference{Surface{1}; Delete;}{Surface{2}; Delete;}
