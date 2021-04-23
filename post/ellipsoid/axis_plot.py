@@ -5,7 +5,7 @@ import seaborn as sns
 import math
 
 # Inputs
-data = pd.read_csv("../../gel_model/output/standard/test/Zdata.csv", index_col=0)
+data = pd.read_csv("../../ellipsoid/output/Zdata.csv", index_col=0)
 
 params = ["Uz", "F33"]
 title = "along Z-axis"
@@ -22,8 +22,8 @@ for i, y in enumerate(params):
     f, a = plt.subplots(1,1)
     sns.lineplot(x='r', y=y, ci=None, data=data, ax = a)
 
-    if y == "mu": a.set_ylim(0, 350)
-    a.vlines(x=10, ymin=a.get_ylim()[0], ymax=a.get_ylim()[1], linestyles='dashed')
+    # if y == "mu": a.set_ylim(0, 350)
+    # a.vlines(x=10, ymin=a.get_ylim()[0], ymax=a.get_ylim()[1], linestyles='dashed')
 
     a.set_title(y + " " + title)
     a.set_ylabel(y)

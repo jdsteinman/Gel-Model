@@ -120,20 +120,20 @@ def solver_call(u, du, bcs, mu, lmbda):
 
     ## Invariants of deformation tensors
     Ic = tr(C)
-    Jac  = det(F)
+    J  = det(F)
 
     ## Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
+    psi = (mu/2)*(Ic - 3) - mu*ln(J) + (lmbda/2)*(ln(J))**2
 
     ## Total potential energy
     Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
 
     ## Compute first variation of Pi (directional derivative about u in the direction of v)
     F = derivative(Pi, u, w)
-    J = derivative(F, u, du)
+    Jac = derivative(F, u, du)
 
     # Create nonlinear variational problem and solve
-    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
+    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
     #'''
     solver = NonlinearVariationalSolver(problem)
     # print(solver.parameters['newton_solver'].keys())
@@ -182,7 +182,7 @@ volume_number = 300
 nu = 0.49                        # Poisson's ratio
 mu_bulk = 325 * 10**12           # Bulk Modulus
 lmbda = 2*nu*mu_bulk / (1-2*nu)  # 1st Lame Parameter
-k = -1.                           # profile shape
+k = -1.                          # profile shape
 l = np.amax(mesh.coordinates())  # side length of gel
 rmax = 10                        # graded model region
 

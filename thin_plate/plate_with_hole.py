@@ -1,115 +1,145 @@
-from dolfin import *
+import dolfin as df
 import numpy as np
+import sys
+import os
+import time
 
-parameters['linear_algebra_backend'] = 'PETSc'
-parameters['form_compiler']['representation'] = 'uflacs'
-parameters['form_compiler']['optimize'] = True
-parameters['form_compiler']['cpp_optimize'] = True
-parameters['form_compiler']['quadrature_degree'] = 2
+df.parameters['linear_algebra_backend'] = 'PETSc'
+df.parameters['form_compiler']['representation'] = 'uflacs'
+df.parameters['form_compiler']['optimize'] = True
+df.parameters['form_compiler']['cpp_optimize'] = True
+df.parameters['form_compiler']['quadrature_degree'] = 2
 
 """
 Written by: John Steinman
 Simulation of hyperelastic thin plate with circular hole. 
-Inner boundary is prescribed a displacement and outer boundary is fixed.
+
+Test Cases:
+    a. Uniform radial contraction
+    b. Contraction in y only
+    c. Contraction in y, expansion in x
 
 Outputs:
     - Displacement (u) : xdmf
     - Deformation Gradient (F) : xdmf
 """
 
-
 def main():
 
+    params = {}
+
+    params['case'] = 'c'
+
+    params['output_folder'] = './output/free_outer/'
+
+    params['mesh'] = df.Mesh("./meshes/plate_with_hole.xml")
+
+    params['physical_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/plate_with_hole_physical_region.xml")
+    params['facet_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/plate_with_hole_facet_region.xml")
+
+    solver_call(params)
+
+def solver_call(params):
+    from dolfin import ln, dot, det, tr, grad, Identity
+
     # Mesh
-    mesh = Mesh("./meshes/plate_with_hole.xml")
+    mesh = params["mesh"]
+
+    domains = params["physical_region"]
+    boundaries = params["facet_region"]
+
+    # Measures
+    dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
+    ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    U = VectorElement('Lagrange', mesh.ufl_cell(), 2)
-    V = FunctionSpace(mesh, U)
+    U = df.VectorElement('Lagrange', mesh.ufl_cell(), 2)
+    V = df.FunctionSpace(mesh, U)
 
-    du, w = TrialFunction(V), TestFunction(V)    # Incremental displacement
-    u = Function(V)
+    du, w = df.TrialFunction(V), df.TestFunction(V) 
+    u = df.Function(V)
     u.vector()[:] = 0
 
-    # BCs
-    mf = cpp.mesh.MeshFunctionSizet(mesh, mesh.topology().dim()-1)
-    mf.set_all(0)
-    inner = inner_boundary()
-    inner.mark(mf, 1)
-    outer = outer_boundary()
-    outer.mark(mf, 2)
-
-    zero = Constant((0.0, 0.0))
-    u_d = Expression(["-x[0]/10","-x[1]/10"], degree=2)
-
-    outer_bc = DirichletBC(V, zero, mf, 2)
-    inner_bc = DirichletBC(V, u_d, mf, 1)
-    bcs = [inner_bc, outer_bc]
-
-    # Solver
-    u, du = solver_call(u, du, w, bcs)
-
-    F = Identity(2) + grad(u)
-    F =  project(F, V=TensorFunctionSpace(mesh, "CG", 1, shape=(2, 2)), solver_type = 'cg', preconditioner_type = 'amg')
-
-    # Outputs
-    disp_file = XDMFFile("./output/U.xdmf")
-    u.rename("U","displacement")
-    disp_file.write(u)
-
-    F_file = XDMFFile("./output/F.xdmf")
-    F.rename("F","deformation gradient")
-    F_file.write(F)
-
-class outer_boundary(SubDomain):
-    def inside(self, x, on_boundary):
-        cond = abs(x[0])<20 and abs(x[1])<20
-        return on_boundary and not cond
-
-class inner_boundary(SubDomain):
-    def inside(self, x, on_boundary):
-        cond = abs(x[0])<20 and abs(x[1])<20 
-        return on_boundary and cond
-
-
-def solver_call(u, du, w, bcs):
-    ## Kinematics
-    B = Constant((0, 0))  # Body force per unit volume
-    T = Constant((0, 0))  # Traction force on the boundary
+    # Kinematics
+    B = df.Constant((0, 0))     # Body force per unit volume
+    T = df.Constant((0, 0))     # Traction force on the boundary
     d = u.geometric_dimension()
     I = Identity(d)             # Identity tensor
     F = I + grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
 
-    # Material parameters
-    nu = 0.49                        # Poisson's ratio
-    mu = Constant(325 * 10**12)      # Bulk Modulus
-    lmbda = 2*nu*mu/ (1-2*nu)        # 1st Lame Parameter
-
-    ## Invariants of deformation tensors
+    # Invariants of deformation tensors
     Ic = tr(C)
-    Jac = det(F)
+    J  = det(F)
 
-    ## Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
+    # Material parameters
+    nu = 0.1                       # Poisson's ratio
+    mu = df.Constant(325e12)       # Bulk Modulus
+    lmbda = 2*nu*mu/ (1-2*nu)      # 1st Lame Parameter
 
-    ## Total potential energy
-    Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
+    # Stored strain energy density (compressible neo-Hookean model)
+    psi = (mu/2)*(Ic - d) - mu*ln(J) + (lmbda/2)*(ln(J))**2
 
-    ## Compute first variation of Pi (directional derivative about u in the direction of v)
-    F = derivative(Pi, u, w)
-    J = derivative(F, u, du)
+    # Total potential energy
+    Pi = psi*dx(201) - dot(B, u)*dx - dot(T, u)*ds
+
+    # Compute first variation of Pi (directional derivative about u in the direction of w)
+    F = df.derivative(Pi, u, w)
+    Jac = df.derivative(F, u, du)
+
+    # Boundary Conditions
+    zero = df.Constant((0.0, 0.0))
+    u_a = df.Expression(["-x[0]/10","-x[1]/10"], degree=2)
+    u_b = df.Expression("-x[1]/10", degree=2)
+    u_c = df.Expression(["x[0]/100","-x[1]/100"], degree=2)
+
+    case = params["case"]
+    if case=="a":
+        inner_bc = df.DirichletBC(V, u_a, boundaries, 102)
+    elif case=="b":
+        inner_bc = df.DirichletBC(V.sub(1), u_b, boundaries, 102)
+    elif case=="c":
+        inner_bc = df.DirichletBC(V, u_c, boundaries, 102)
+    else:
+        print("Invalid case: ", case)
+        sys.exit()
+
+    outer_bc = df.DirichletBC(V, zero, boundaries, 101)
+
+    bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem and solve
-    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
-
-    solver = NonlinearVariationalSolver(problem)
+    problem = df.NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
+    solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
     solver.parameters['newton_solver']['linear_solver'] = 'gmres'
     solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
+    
+    start = time.time()
     solver.solve()
+    print("Total Time: ", time.time() - start, "s")
 
-    return u, du
+    # Projections
+    F = Identity(2) + grad(u)
+    F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(2, 2)), solver_type = 'cg', preconditioner_type = 'amg')
+
+    # Outputs
+    output_folder = params["output_folder"]
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    disp_file = df.XDMFFile(output_folder + "U.xdmf")
+    u.rename("U","displacement")
+    disp_file.write(u)
+
+    F_file = df.XDMFFile(output_folder + "F.xdmf")
+    F.rename("F","deformation gradient")
+    F_file.write(F)
+
+    with df.XDMFFile(output_folder+"out.xdmf") as outfile:
+        outfile.write(mesh)
+        outfile.write_checkpoint(u, "u", 0, append=True)
+        outfile.write_checkpoint(F, "F", 0, append=True)
 
 if __name__ == "__main__":
     main()

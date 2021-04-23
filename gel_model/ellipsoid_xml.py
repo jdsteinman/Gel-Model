@@ -3,6 +3,7 @@ import time
 import meshio
 import numpy as np
 from dolfin import *
+from classes import LineData
 
 """
 Written by: John Steinman
@@ -28,27 +29,27 @@ def solver_call(u, du, w, bcs, mu, lmbda):
 
     ## Invariants of deformation tensors
     Ic = tr(C)
-    Jac  = det(F)
+    J  = det(F)
 
     ## Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 3) - mu*ln(Jac) + (lmbda/2)*(ln(Jac))**2
+    psi = (mu/2)*(Ic - 3) - mu*ln(J) + (lmbda/2)*(ln(J))**2
 
     ## Total potential energy
     Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds
 
     ## Compute first variation of Pi (directional derivative about u in the direction of v)
     F = derivative(Pi, u, w)
-    J = derivative(F, u, du)
+    Jac = derivative(F, u, du)
 
     # Create nonlinear variational problem and solve
-    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=J)
+    problem = NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
     solver = NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
     solver.parameters['newton_solver']['linear_solver'] = 'gmres'
     solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
     solver.solve()
 
-    return u, du, Jac
+    return u, du
 
 class outer_boundary(SubDomain):
     def inside(self, x, on_boundary):
@@ -97,7 +98,7 @@ bcs = []
 bcs.append(DirichletBC(V, zero, mf, 2))
 
 # Inner BC
-u_D = Expression(["t*x[0]*a/10", "t*x[1]*b/10", "-t*x[2]*c/20"], a=0.1, b=0.1, c=0.2, t=1, degree=2)
+u_D = Expression(["t*x[0]*a/10", "t*x[1]*b/10", "-t*x[2]*c/20"], a=1, b=1, c=2, t=1, degree=2)
 innerbc = DirichletBC(V, u_D, mf, 1) 
 
 innerbc.apply(u.vector())
@@ -121,7 +122,7 @@ for i in range(chunks):
     bcs[-1] = innerbc
 
     ## Solver
-    u, du, Jac = solver_call(u, du, w, bcs, mu, lmbda)
+    u, du = solver_call(u, du, w, bcs, mu, lmbda)
 
     print("Time: ", time.time() - iter_start)
     print()
@@ -131,6 +132,7 @@ print("Total Time: ", time.time() - total_start)
 # Projections
 F = Identity(3) + grad(u)
 F = project(F, V=TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+mu = project(mu, FunctionSpace(mesh, "CG", 1))
 
 ## XDMF Outputs
 disp_file = XDMFFile(output_folder + "U.xdmf")
@@ -140,3 +142,7 @@ disp_file.write(u)
 F_file = XDMFFile(output_folder + "F.xdmf")
 F.rename("F","deformation gradient")
 F_file.write(F)
+
+# plot over line
+zdata = LineData(u, F, mu, [0,0,20], [0,0,1], 25)
+zdata.save_to_csv(fname = output_folder + "Zdata.csv")

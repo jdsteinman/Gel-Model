@@ -1,27 +1,28 @@
 SetFactory("OpenCASCADE");
 
-fine = 0.1;
+fine = 0.5;
 coarse = 2.0;
 
-s = 50;
-r = 5;
+s = 100;
+r = 10;
 
-Rectangle(1) = {-s, -s, 0, 2*s, 2*s};
+Rectangle(1) = {-s/2, -s/2, 0, s, s};
 Disk(2) = {0,0,0,r};
 
 BooleanDifference{Surface{1}; Delete;}{Surface{2}; Delete;}
 
-// Interface
-Physical Line(11) = {5};
+// Outer edge
+Physical Line(101) = {6, 7, 8, 9};
 
-// Outer
-Physical Line(10) = {6, 7, 8, 9};
+// Inner edge
+Physical Line(102) = {5};
 
 // Surface
-Physical Surface(20) = {1};
+Physical Surface(201) = {1};
 
-// Mesh
-Characteristic Length{:} = 0.5;
+// Mesh resolution
+Mesh.CharacteristicLengthFactor = 1;
+Characteristic Length{:} = fine;
 
 // Generate Mesh
 Mesh 2;
