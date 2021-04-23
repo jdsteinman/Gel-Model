@@ -28,4 +28,3 @@ Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 // Generate Mesh
 Mesh 3;
 Mesh.MshFileVersion = 2.2;
-

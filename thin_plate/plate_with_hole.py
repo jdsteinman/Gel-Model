@@ -30,7 +30,7 @@ def main():
 
     params['case'] = 'c'
 
-    params['output_folder'] = './output/free_outer/'
+    params['output_folder'] = './output/' + params['case'] + '/'
 
     params['mesh'] = df.Mesh("./meshes/plate_with_hole.xml")
 
