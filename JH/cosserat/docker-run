@@ -1,0 +1,2 @@
+#!/bin/bash
+docker run --rm -ti -v $(pwd):/home/fenics/shared -w /home/fenics/shared -ti jhale/cosserat 

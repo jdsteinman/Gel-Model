@@ -29,7 +29,7 @@ def main():
 
     params = {}
 
-    params['case'] = 'a'
+    params['case'] = 'c'
 
     params['output_folder'] = './output/' + params['case'] + '/'
 
@@ -68,7 +68,7 @@ def solver_call(params):
     I = Identity(d)             # Identity tensor
 
     # Material parameters
-    nu = 0.49                        # Poisson's ratio
+    nu = 0.25                        # Poisson's ratio
     mu = df.Constant(325 * 10**12)   # Bulk Modulus
     lmbda = 2*nu*mu/ (1-2*nu)        # 1st Lame Parameter
 
@@ -103,7 +103,7 @@ def solver_call(params):
 
     outer_bc = df.DirichletBC(V, zero, boundaries, 101)
     bcs = [inner_bc, outer_bc]
-
+    
     # Create nonlinear variational problem and solve
     problem = df.LinearVariationalProblem(a, L, u, bcs=bcs)
     solver = df.LinearVariationalSolver(problem)
@@ -128,12 +128,6 @@ def solver_call(params):
     F_file = df.XDMFFile(output_folder + "F.xdmf")
     F.rename("F","deformation gradient")
     F_file.write(F)
-
-    with df.XDMFFile(output_folder+"out.xdmf") as outfile:
-        outfile.write(mesh)
-        outfile.write_checkpoint(u, "u", 0, append=True)
-        outfile.write_checkpoint(F, "F", 0, append=True)
-
 
 if __name__ == "__main__":
     main()

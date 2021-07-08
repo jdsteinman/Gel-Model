@@ -1,7 +1,7 @@
 SetFactory("OpenCASCADE");
 
 // Cube
-l = 75; // Side length of box
+l = 200; // Side length of box
 Box(1) = {-l/2, -l/2, -l/2, l, l, l};
 
 // Sphere
@@ -21,7 +21,7 @@ Physical Volume(301) = {1};
 Physical Surface(201) = {8, 9, 10, 11, 12, 13};
 Physical Surface(202) = {7};
 
-Mesh.CharacteristicLengthFactor = 0.75;
+Mesh.CharacteristicLengthFactor = 1.0;
 Characteristic Length{PointsOf{Physical Surface{202};}} = 1;
 Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 
