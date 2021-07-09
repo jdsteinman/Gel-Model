@@ -1,0 +1,16 @@
+result folder = output_gradient
+Total number of elements = 35570
+n = 1
+>> Checking out
+Time elapsed = 136.4s
+Done
+result folder = output_gradient_3
+Total number of elements = 35570
+n = 1
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun noticed that process rank 0 with PID 0 on node johns-laptop exited on signal 9 (Killed).
+--------------------------------------------------------------------------

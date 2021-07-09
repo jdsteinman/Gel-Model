@@ -61,7 +61,7 @@ def solver_call(params):
     J  = det(F)
 
     # Material parameters
-    nu = 0.49                      # Poisson's ratio
+    nu = 0.30                      # Poisson's ratio
     mu = df.Constant(325e12)       # Bulk Modulus
     lmbda = 2*nu*mu/ (1-2*nu)      # 1st Lame Parameter
 
