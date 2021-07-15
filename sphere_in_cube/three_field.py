@@ -1,8 +1,6 @@
 import dolfin as df
-import numpy as np
-import nodal_tools as nt
-import time
 import os
+import time
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -13,46 +11,39 @@ df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 10000
 
+"""
+Written by: John Steinman
+"""
+
 def main():
+
     params = {}
 
     params['output_folder'] = './output/test/mesh_3/'
 
-    params['mesh'] = "../cell_meshes/bird/hole.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
+    params['mesh'] = df.Mesh("./meshes/hole_3.xml")
 
-    params['surface_nodes'] = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/bird/CytoD_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/displacements.txt')
+    params['physical_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/hole_3_physical_region.xml")
+    params['facet_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/hole_3_facet_region.xml")
 
     solver_call(params)
 
 def solver_call(params):
 
     # Mesh
-    mesh = df.Mesh()
-    with df.XDMFFile(params["mesh"]) as infile:
-        infile.read(mesh)
+    mesh = params["mesh"]
 
-    mvc = df.MeshValueCollection("size_t", mesh, 2)
-    with df.XDMFFile(params["domains"]) as infile:
-        infile.read(mvc, "domains") 
-    domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
-
-    mvc = df.MeshValueCollection("size_t", mesh, 2)
-    with df.XDMFFile(params["boundaries"]) as infile:
-        infile.read(mvc, "boundaries") 
-    boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
+    domains = params["physical_region"]
+    boundaries = params["facet_region"]
 
     # Measures
     dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    element_u = df.VectorElement("CG", mesh.ufl_cell(), 2)
-    element_p = df.FiniteElement("DG", mesh.ufl_cell(), 0)
-    element_J = df.FiniteElement("DG", mesh.ufl_cell(), 0)
+    element_u = df.VectorElement("CG",mesh.ufl_cell(),2)
+    element_p = df.FiniteElement("DG",mesh.ufl_cell(),0)
+    element_J = df.FiniteElement("DG",mesh.ufl_cell(),0)
   
     V = df.FunctionSpace(mesh,df.MixedElement([element_u,element_p,element_J]))
     xi = df.Function(V)
@@ -86,7 +77,7 @@ def solver_call(params):
 
     # Material parameters
     c1 = df.Constant(1.0)
-    c2 = df.Constant(1000.0)
+    c2 = df.Constant(100.0)
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -99,20 +90,12 @@ def solver_call(params):
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
-    surface_nodes = params['surface_nodes']
-    surface_faces = params['surface_faces']
-    displacements = params['displacements']
-
-    midpoints = nt.get_midpoints(surface_nodes, surface_faces)
-    midpoint_disp = nt.get_midpoint_disp(displacements, surface_faces)
-    face_map = nt.get_face_mapping(midpoints, mesh, boundaries, 202)
-    face2disp = dict(zip(face_map, midpoint_disp))
-
     zero = df.Constant((0.0, 0.0, 0.0))
-    bf = nt.BoundaryFunc(mesh, face2disp, 1)
+    u_inner = df.Expression(["t*x[0]/10","t*x[1]/10","-t*2*x[2]/10"], t=0, degree=2)
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
-    inner_bc = df.DirichletBC(V_u, bf, boundaries, 202)
+    inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
+
     bcs = [outer_bc, inner_bc]
 
     # Create nonlinear variational problem
@@ -125,9 +108,7 @@ def solver_call(params):
     total_start = time.time()
     for i in range(chunks):
         start = time.time()
-
-        bf.scalar = (i+1)/chunks
-
+        u_inner.t = (i+1)/chunks
         solver.solve()
         print("Time: ", time.time()-start) 
     print("Total Time: ", time.time() - total_start, "s")
@@ -151,13 +132,5 @@ def solver_call(params):
     F.rename("F","deformation gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
-    J.rename("J","Jacobian")
-    J_file.write(J)
-
-    p_file = df.XDMFFile(output_folder + "p.xdmf")
-    p.rename("p","pressure")
-    p_file.write(p)
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

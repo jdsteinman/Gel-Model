@@ -5,7 +5,7 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface.stl";
+Merge "cell_surface_coarser.stl";
 
 // Lengths
 length = 150.;
@@ -59,8 +59,8 @@ Physical Surface(202) = {1};                  // cell surface
 Physical Volume(301) = {26};                  // gel
 
 // Characteristic Length
-Mesh.CharacteristicLengthFactor = 1;
-Characteristic Length{PointsOf{Physical Surface{201};}} = 10;
+// Mesh.CharacteristicLengthFactor = 2.5;
+Characteristic Length{PointsOf{Physical Surface{201};}} = 15;
 
 // Generate Mesh
 Mesh 3;

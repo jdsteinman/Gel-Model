@@ -17,10 +17,11 @@ Physical Volume(301) = {1};
 Physical Surface(201) = {8, 9, 10, 11, 12, 13};
 Physical Surface(202) = {7};
 
-Mesh.CharacteristicLengthFactor = 0.75;
-Characteristic Length{PointsOf{Physical Surface{202};}} = 1;
-Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
+Mesh.CharacteristicLengthFactor = 0.3;
+// Characteristic Length{PointsOf{Physical Surface{202};}} = 1;
+// Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 
 // Generate Mesh
 Mesh 3;
 Mesh.MshFileVersion = 2.2;
+Save "hole_3.msh";

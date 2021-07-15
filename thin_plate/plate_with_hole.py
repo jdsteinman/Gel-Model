@@ -31,20 +31,19 @@ def main():
     params = {}
 
     params['case'] = 'c'
-
-    mesh = "coarse"    
-    params['output_folder'] = './output/three_field/plate_with_hole/' + params['case'] + '/'
+   
+    params['output_folder'] = './output/three_field/plate_with_hole/CG3/'
 
     params['mesh'] = df.Mesh("./meshes/plate_with_hole_fine.xml")
-
     params['physical_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/plate_with_hole_fine_physical_region.xml")
     params['facet_region'] = df.MeshFunction("size_t", params["mesh"], "./meshes/plate_with_hole_fine_facet_region.xml")
+
+    params['c1'] = df.Constant(1.0)
+    params['c2'] = df.Constant(100.0)
 
     solver_call(params)
 
 def solver_call(params):
-    from dolfin import ln, dot, det, tr, grad, Identity
-
     # Mesh
     mesh = params["mesh"]
 
@@ -56,9 +55,9 @@ def solver_call(params):
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    element_u = df.VectorElement('CG', mesh.ufl_cell(), 3)
-    element_p = df.FiniteElement('DG', mesh.ufl_cell(), 1)
-    element_J = df.FiniteElement('DG', mesh.ufl_cell(), 1)   
+    element_u = df.VectorElement('CG', mesh.ufl_cell(), 2)
+    element_p = df.FiniteElement('DG', mesh.ufl_cell(), 0)
+    element_J = df.FiniteElement('DG', mesh.ufl_cell(), 0)   
     W = df.FunctionSpace(mesh, df.MixedElement([element_u,element_p,element_J]))
     V_u, V_p, V_J = W.split()
 
@@ -83,52 +82,54 @@ def solver_call(params):
     B = df.Constant((0, 0))     # Body force per unit volume
     T = df.Constant((0, 0))     # Traction force on the boundary
     d = u.geometric_dimension()
-    I = Identity(d)             # Identity tensor
-    F = I + grad(u)             # Deformation gradient
+    I = df.Identity(d)          # Identity tensor
+    F = I + df.grad(u)          # Deformation gradient
+    Ju  = df.det(F)             # Jacobian
     C = F.T*F                   # Right Cauchy-Green tensor
     b = F*F.T                   # Left Cauchy-Greem tensor
+    C_bar = C/Ju**(2/d)         # Isochoric C
+    b_bar = b/Ju**(2/d)         # Isochoric b
 
     # Invariants of deformation tensors
-    Ju  = det(F)
-    I = tr(b)
-    Ibar = I*Ju**-1
+    IC_bar = df.tr(C_bar)
+    Ib_bar = df.tr(b_bar)
 
     # Material parameters
-    c1 = df.Constant(1.0)
-    c2 = df.Constant(100)
+    c1 = params['c1']
+    c2 = params['c2']
 
     # Stored strain energy density (three-field formulation)
-    psi = c1*(Ibar-2) + c2*(J**2-1-2*ln(J))/4 + p*(Ju-J)
+    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
 
     # Total potential energy
-    Pi = psi*dx(201) - dot(B, u)*dx - dot(T, u)*ds
+    Pi = psi*dx(201) - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Compute stationary of Pi 
-    R = df.derivative(Pi, xi, xi_)
-    Jac = df.derivative(R, xi, dxi)
+    res = df.derivative(Pi, xi, xi_)
+    Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
     zero = df.Constant((0.0, 0.0))
 
     case = params["case"]
     if case=="a":
-        u_inner = df.Expression(["-t*x[0]/2","-t*x[1]/2"], t=0, degree=2)
+        u_inner = df.Expression(["-t*0.1*x[0]","-t*0.1*x[1]"], t=0, degree=2)
         inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 102)
     elif case=="b":
         u_inner = df.Expression("-t*x[1]/2", t=0, degree=2)
         inner_bc = df.DirichletBC(V_u.sub(1), u_inner, boundaries, 102)
     elif case=="c":
-        u_inner = df.Expression(["t*x[0]/5","-t*x[1]/2"], t=0, degree=2)
+        u_inner = df.Expression(["t*0.1*x[0]","-t*0.1*x[1]"], t=0, degree=2)
         inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 102)
     else:
         print("Invalid case: ", case)
         sys.exit()
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 101)
-    bcs = [inner_bc, outer_bc]
+    bcs = [inner_bc]
 
     # Create nonlinear variational problem and solve
-    problem = df.NonlinearVariationalProblem(R, xi, bcs=bcs, J=Jac)
+    problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'mumps'
 
@@ -146,7 +147,7 @@ def solver_call(params):
 
     # Projections
     u, p, J = xi.split()
-    F = Identity(2) + grad(u)
+    F = df.Identity(2) + df.grad(u)
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "DG", 0, shape=(2, 2)), solver_type = 'cg', preconditioner_type = 'amg')
 
     # Outputs
@@ -162,11 +163,11 @@ def solver_call(params):
     F.rename("F","deformation gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(output_folder + "F.xdmf")
+    J_file = df.XDMFFile(output_folder + "J.xdmf")
     J.rename("J","Jacobian")
     J_file.write(J)
 
-    p_file = df.XDMFFile(output_folder + "F.xdmf")
+    p_file = df.XDMFFile(output_folder + "p.xdmf")
     p.rename("p","pressure")
     p_file.write(p)
 

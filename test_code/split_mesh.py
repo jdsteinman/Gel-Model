@@ -7,7 +7,7 @@ Saves each set of elements in separate mesh.xdmf file.
 """
 
 path = "./mesh/"
-filename = "mesh_gradient"
+filename = "mesh_dense_js"
 msh = meshio.read(path + filename + ".msh")
 
 # Get triangle and tet connectivity

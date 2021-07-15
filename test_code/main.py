@@ -13,11 +13,10 @@ from mpi4py import MPI
     A 3D test
 '''
 
-#res_dir = 'results_complex_c2_10'
-res_dir = 'output_gradient_3'
+res_dir = 'output/results_complex_c2_100_CG2_dense_js'
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
-df.set_log_level(40)
+# df.set_log_level(40)
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -35,7 +34,7 @@ if rank == 0:
         shutil.copyfile('main.py',os.path.join(res_dir,'main.py'))
 
 mesh = df.Mesh()
-with df.XDMFFile("./mesh/mesh_gradient_tetra.xdmf") as infile:
+with df.XDMFFile("./mesh/mesh_dense_js_tetra.xdmf") as infile:
     infile.read(mesh)
 for n in range(0):
     mesh = df.refine(mesh)
@@ -55,7 +54,7 @@ print(mesh.geometry().dim())
 '''
 #I noticed that order 2 for u is necessary for nearly incompressible material
 #when the BC is complex. Double check!
-element_u = df.VectorElement("CG",mesh.ufl_cell(),3)
+element_u = df.VectorElement("CG",mesh.ufl_cell(),2)
 element_p = df.FiniteElement("DG",mesh.ufl_cell(),0)
 element_J = df.FiniteElement("DG",mesh.ufl_cell(),0)
 W = df.FunctionSpace(mesh,df.MixedElement([element_u,element_p,element_J]))
@@ -68,28 +67,21 @@ V_J = W.sub(2).collapse()
 u_0 = df.interpolate(df.Constant((0.0, 0.0, 0.0)), V_u)
 p_0 = df.interpolate(df.Constant(0.0), V_p)
 J_0 = df.interpolate(df.Constant(1.), V_J)
-#print(u_0.vector()[:])
-#print(p_0.vector()[:])
-#print(J_0.vector()[:])
-'''
-fa = df.FunctionAssigner(W,[V_u,V_p,V_J])
-fa.assign(xi,[u_0, p_0, J_0])
-'''
+
+
 df.assign(xi,[u_0,p_0,J_0])
 u,p,J = xi.split(deepcopy=True)
-#print(u.vector()[:])
-#print(p.vector()[:])
-#print(J.vector()[:])
 u.rename('u','displacement')
 p.rename('p','pressure')
 J.rename('J','Jacobian')
+
 disp_File = df.File(os.path.join(res_dir,'u.pvd'))
 disp_File << (u,0)
 p_File = df.File(os.path.join(res_dir,'p.pvd'))
 p_File << (p,0)
 J_File = df.File(os.path.join(res_dir,'J.pvd'))
 J_File << (J,0)
-#u_copy,p_copy,J_copy = xi.split(deepcopy=True)
+
 u,p,J = df.split(xi)
 
 xi_ = df.TestFunction(W)
@@ -102,10 +94,10 @@ C = F.T*F
 b = F*F.T
 E = (C-I)/2
 IC = df.tr(C)
-C_bar = C/J**(2/d)
-b_bar = b/J**(2/d)
-IC_bar = df.tr(C_bar)
 Ju = df.det(F)
+C_bar = C/Ju**(2/d)
+b_bar = b/Ju**(2/d)
+IC_bar = df.tr(C_bar)
 
 c1 = df.Constant(1.)
 c2 = df.Constant(100.)
@@ -160,7 +152,7 @@ bcs = [bc3]
 
 problem = df.NonlinearVariationalProblem(res,xi,bcs,J=Dres)
 solver = df.NonlinearVariationalSolver(problem)
-solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
+# solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
 solver.parameters['newton_solver']['linear_solver'] = 'mumps'
 '''
 # TODO: switch to PETSc SNES solver, which may work better!

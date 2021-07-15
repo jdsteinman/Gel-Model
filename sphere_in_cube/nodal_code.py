@@ -1,4 +1,6 @@
 import dolfin as df
+from numpy.core.multiarray import inner
+from scipy.spatial import distance_matrix
 import numpy as np
 import nodal_tools as nt
 import time
@@ -16,15 +18,14 @@ df.parameters['krylov_solver']['maximum_iterations'] = 10000
 def main():
     params = {}
 
-    params['output_folder'] = './output/test/mesh_3/'
+    params['output_folder'] = './output/test/mesh_2/'
 
-    params['mesh'] = "../cell_meshes/bird/hole.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
+    params['mesh'] = "meshes/hole_2.xdmf"
+    params['domains'] = "meshes/hole_2_domains.xdmf"
+    params['boundaries'] = "meshes/hole_2_boundaries.xdmf"
 
-    params['surface_nodes'] = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/bird/CytoD_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/displacements.txt')
+    params['surface_nodes'] = np.loadtxt("meshes/surface_nodes.txt")
+    params['surface_faces'] = np.loadtxt("meshes/surface_faces.txt")
 
     solver_call(params)
 
@@ -101,10 +102,10 @@ def solver_call(params):
     # Boundary Conditions
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
-    displacements = params['displacements']
 
+    disp = nt.get_displacement(surface_nodes)
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
-    midpoint_disp = nt.get_midpoint_disp(displacements, surface_faces)
+    midpoint_disp = nt.get_midpoint_disp(disp, surface_faces)
     face_map = nt.get_face_mapping(midpoints, mesh, boundaries, 202)
     face2disp = dict(zip(face_map, midpoint_disp))
 

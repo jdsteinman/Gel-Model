@@ -3,6 +3,9 @@ import numpy as np
 import nodal_tools as nt
 import time
 import os
+import sys
+from mpi4py import MPI
+from shutil import copyfile
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -12,6 +15,8 @@ df.parameters['form_compiler']['quadrature_degree'] = 3
 df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 10000
+
+df.set_log_level(40)
 
 def main():
     params = {}
@@ -109,7 +114,7 @@ def solver_call(params):
     face2disp = dict(zip(face_map, midpoint_disp))
 
     zero = df.Constant((0.0, 0.0, 0.0))
-    bf = nt.BoundaryFunc(mesh, face2disp, 1)
+    bf = nt.BoundaryFunc(mesh, face2disp, 0)
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, bf, boundaries, 202)
@@ -119,20 +124,40 @@ def solver_call(params):
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'mumps'
+
     
+    # MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    val = np.array(len(mesh.cells()),'d')
+    val_sum = np.array(0.,'d')
+    comm.Reduce(val, val_sum, op=MPI.SUM, root=0)
+
+    if rank==0:
+        print("Nonlinear problem created")
+        print("Solving")
+
     # Solve
-    chunks = 1
-    total_start = time.time()
+    chunks = 2
+    sys.stdout.flush() 
     for i in range(chunks):
         start = time.time()
 
         bf.scalar = (i+1)/chunks
-
         solver.solve()
-        print("Time: ", time.time()-start) 
-    print("Total Time: ", time.time() - total_start, "s")
+
+        end = time.time()
+        time_elapsed = end - start
+        if rank == 0:
+            print("    Iter: ", i)
+            print('    Time elapsed = {:2.1f}s'.format(time_elapsed))
+        sys.stdout.flush()  
 
     u, p, J = xi.split(True)
+
+    if rank == 0:
+        print("Writing Outputs")
 
     # Projections
     F = df.Identity(3) + df.grad(u)
@@ -140,8 +165,9 @@ def solver_call(params):
 
     # Outputs
     output_folder = params["output_folder"]
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    if rank==0:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
 
     disp_file = df.XDMFFile(output_folder + "U.xdmf")
     u.rename("U","displacement")
@@ -158,6 +184,11 @@ def solver_call(params):
     p_file = df.XDMFFile(output_folder + "p.xdmf")
     p.rename("p","pressure")
     p_file.write(p)
+
+    if rank == 0:
+        print("Results in: ", output_folder)
+        print("Done")
+        print("========================================")
 
 if __name__=="__main__":
     main()
