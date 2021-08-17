@@ -11,6 +11,11 @@ def main():
                 output_filename = os.path.splitext(input_filename)[0]
 
                 mesh = meshio.read(input_filename)
+                points = mesh.points
+                points[:,0] = points[:,0] + 72.20045715
+                points[:,1] = points[:,1] + 72.90093189
+                points[:,2] = points[:,2] + 47.46392168
+
                 for cell in mesh.cells:
                     if cell.type == "triangle":
                         triangle_cells = cell.data
@@ -26,15 +31,15 @@ def main():
 
                 # Separate meshes
                 try:
-                    meshio.write(output_filename + ".xdmf", meshio.Mesh(points=mesh.points, cells={"tetra": tetra_cells}))
-                    meshio.write(output_filename + "_domains.xdmf", meshio.Mesh(points=mesh.points, 
+                    meshio.write(output_filename + ".xdmf", meshio.Mesh(points=points, cells={"tetra": tetra_cells}))
+                    meshio.write(output_filename + "_domains.xdmf", meshio.Mesh(points=points, 
                                 cells={"tetra": tetra_cells},
                                 cell_data={"domains":[tetra_data]}))
                 except:
                     print("Unable to convert", output_filename)
 
                 try:
-                    triangle_mesh = meshio.Mesh(points=mesh.points,
+                    triangle_mesh = meshio.Mesh(points=points,
                                         cells=[("triangle", triangle_cells)],
                                         cell_data={"boundaries":[triangle_data]})
                     meshio.write(output_filename +  "_boundaries.xdmf", triangle_mesh)

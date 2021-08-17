@@ -2,7 +2,7 @@ import os
 from dolfin_utils.meshconvert import meshconvert
 
 def main():
-    directories = ['./meshes']
+    directories = ['./bird']
     for directory in directories:
         for file in os.listdir(directory):
             if file.endswith(".msh"):

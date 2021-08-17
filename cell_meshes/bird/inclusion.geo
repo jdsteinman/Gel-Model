@@ -5,7 +5,7 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface.stl";
+Merge "cell_surface_coarser.stl";
 
 // Lengths
 length = 150.;

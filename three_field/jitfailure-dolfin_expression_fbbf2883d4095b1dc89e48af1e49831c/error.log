@@ -1,0 +1,5 @@
+/tmp/tmpwb6x8otb/dolfin_expression_fbbf2883d4095b1dc89e48af1e49831c.cpp: In member function ‘virtual void dolfin::dolfin_expression_fbbf2883d4095b1dc89e48af1e49831c::eval(Eigen::Ref<Eigen::Matrix<double, -1, 1> >, Eigen::Ref<const Eigen::Matrix<double, -1, 1> >) const’:
+/tmp/tmpwb6x8otb/dolfin_expression_fbbf2883d4095b1dc89e48af1e49831c.cpp:62:23: error: ‘dx’ was not declared in this scope; did you mean ‘x’?
+   62 |           values[0] = dx*t;
+      |                       ^~
+      |                       x

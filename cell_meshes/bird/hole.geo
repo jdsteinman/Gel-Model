@@ -5,18 +5,20 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface_coarser.stl";
+Merge "cell_surface_500.stl";
 
 // Lengths
-length = 150.;
-height = 150.;
-depth = 150.;
+length = 200.;
+height = 200.;
+depth = 200.;
 lcar1 = 0.5;
+
+// Translate {length, height, depth} {Surface{1};}
 
 // Outer Boundary Points
 Point(1) = {length/2,height/2,depth/2,lcar1}; 
-Point(2) = {length/2,height/2,-depth/2,lcar1}; 
-Point(3) = {-length/2,height/2,depth/2,lcar1}; 
+Point(2) = {length/2,height/2,-depth/2, lcar1}; 
+Point(3) = {-length/2,height/2,depth/2, lcar1}; 
 Point(4) = {-length/2,-height/2,depth/2,lcar1}; 
 Point(5) = {length/2,-height/2,depth/2,lcar1}; 
 Point(6) = {length/2,-height/2,-depth/2,lcar1}; 
@@ -66,4 +68,3 @@ Characteristic Length{PointsOf{Physical Surface{201};}} = 15;
 Mesh 3;
 Mesh.MshFileVersion = 2.2;
 Save "hole.msh";
-

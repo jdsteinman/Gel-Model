@@ -12,7 +12,7 @@ faces = faces - 1
 cells = [("triangle", faces)]
 
 meshio.write_points_cells(
-    outpath+"cytod_uncentered_unpca_surface.xml",
+    outpath+"cytod_uncentered_unpca_surface.stl",
     points,
     cells,   
 )

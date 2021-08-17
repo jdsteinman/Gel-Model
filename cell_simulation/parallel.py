@@ -1,4 +1,5 @@
 import dolfin as df
+import mpi4py
 import numpy as np
 import nodal_tools as nt
 import time
@@ -16,7 +17,7 @@ df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 10000
 
-df.set_log_level(40)
+df.set_log_level(40)  # Supress output
 
 def main():
     params = {}
@@ -125,7 +126,6 @@ def solver_call(params):
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'mumps'
 
-    
     # MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -139,7 +139,7 @@ def solver_call(params):
         print("Solving")
 
     # Solve
-    chunks = 2
+    chunks = 5
     sys.stdout.flush() 
     for i in range(chunks):
         start = time.time()
@@ -155,6 +155,14 @@ def solver_call(params):
         sys.stdout.flush()  
 
     u, p, J = xi.split(True)
+
+    # Assemble Solution
+    if rank==0:
+        u_local_vec = u.vector()  # Local solution vector
+        u_global_vec = df.Vector(MPI.comm_self, u_local_vec.local_size())
+        u_local_vec.gather(u_global_vec, V_u.dofmap.dofs())
+
+        u_global = df.Function(V_u, u_global_vec)
 
     if rank == 0:
         print("Writing Outputs")

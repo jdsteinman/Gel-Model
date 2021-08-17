@@ -1,0 +1,12 @@
+/tmp/tmp5459v9qi/dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b.cpp: In member function ‘virtual void dolfin::dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b::eval(Eigen::Ref<Eigen::Matrix<double, -1, 1> >, Eigen::Ref<const Eigen::Matrix<double, -1, 1> >) const’:
+/tmp/tmp5459v9qi/dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b.cpp:63:23: error: ‘dx’ was not declared in this scope; did you mean ‘dz’?
+   63 |           values[0] = dx*t;
+      |                       ^~
+      |                       dz
+/tmp/tmp5459v9qi/dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b.cpp: In member function ‘virtual double dolfin::dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b::get_property(std::string) const’:
+/tmp/tmp5459v9qi/dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b.cpp:75:11: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   75 |           if (name == "dz") return dz;          if (name == "t") return t;
+      |           ^~
+/tmp/tmp5459v9qi/dolfin_expression_5574fee4ae53e6f0bb192d0605ac0d2b.cpp:75:49: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   75 |           if (name == "dz") return dz;          if (name == "t") return t;
+      |                                                 ^~

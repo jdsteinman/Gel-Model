@@ -15,16 +15,24 @@ df.parameters['krylov_solver']['maximum_iterations'] = 10000
 
 def main():
     params = {}
+    NN = 500
+    mu = 108
+    kappa = 7500
 
-    params['output_folder'] = './output/test/mesh_3/'
+    params["mu"] = mu
+    params["kappa"] = kappa
+
+    params['output_folder'] = './output/graded/' 
 
     params['mesh'] = "../cell_meshes/bird/hole.xdmf"
     params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
     params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
 
-    params['surface_nodes'] = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/bird/CytoD_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/displacements.txt')
+    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/surface_vertices_' + str(NN) + '.txt')
+    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/surface_faces_' + str(NN) + '.txt', dtype=int)
+    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_' + str(NN) + '.txt')
+    params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
+    params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
 
     solver_call(params)
 
@@ -44,6 +52,10 @@ def solver_call(params):
     with df.XDMFFile(params["boundaries"]) as infile:
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
+
+    surface_nodes = params['surface_nodes']
+    surface_faces = params['surface_faces']
+    displacements = params['displacements']
 
     # Measures
     dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
@@ -85,8 +97,13 @@ def solver_call(params):
     IC_bar = df.tr(C_bar)
 
     # Material parameters
-    c1 = df.Constant(1.0)
-    c2 = df.Constant(1000.0)
+    mu = params["mu"]
+    mu = nt.shear_modulus(surface_nodes, mu, 40, 1, method="power")
+    kappa = params["kappa"]
+    # kappa = 2*mu*(1+nu)/(3*(1-2*nu))
+
+    c1 = mu/2
+    c2 = df.Constant(kappa)
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -99,10 +116,6 @@ def solver_call(params):
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
-    surface_nodes = params['surface_nodes']
-    surface_faces = params['surface_faces']
-    displacements = params['displacements']
-
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
     midpoint_disp = nt.get_midpoint_disp(displacements, surface_faces)
     face_map = nt.get_face_mapping(midpoints, mesh, boundaries, 202)
@@ -119,11 +132,13 @@ def solver_call(params):
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'mumps'
-    
+    solver.parameters['newton_solver']['relative_tolerance'] = 1E-2
+
     # Solve
-    chunks = 1
+    chunks = 20
     total_start = time.time()
     for i in range(chunks):
+        print("Solver call: ", i)
         start = time.time()
 
         bf.scalar = (i+1)/chunks
@@ -135,29 +150,55 @@ def solver_call(params):
     u, p, J = xi.split(True)
 
     # Projections
-    F = df.Identity(3) + df.grad(u)
-    F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    F_proj = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    psi_proj = df.project(psi, df.FunctionSpace(mesh, "DG", 0))
 
     # Outputs
     output_folder = params["output_folder"]
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    disp_file = df.XDMFFile(output_folder + "U.xdmf")
+    # Interpolate at bead locations
+    beads_init = params['beads_init']
+    beads_final = params['beads_final']
+    points = []
+    u_sim = []
+    u_data = []
+
+    for i, (init, final) in enumerate(zip(beads_init, beads_final)):
+        try:
+            u_sim.append(u(init))
+            u_data.append(final-init)
+            points.append(init)
+        except:
+            print(i)
+
+    u_sim = np.array(u_sim)
+    u_data = np.array(u_data)
+    points = np.array(points)
+    nt.write_vtk(output_folder+"bead_displacements", points, u_sim, u_data)
+    nt.write_txt(output_folder+"bead_displacements_sim.txt", points, u_sim)
+    nt.write_txt(output_folder+"bead_displacements_data.txt", points, u_data)
+    
     u.rename("U","displacement")
+    disp_file = df.XDMFFile(output_folder + "U.xdmf")
     disp_file.write(u)
 
+    F_proj.rename("F","deformation gradient")
     F_file = df.XDMFFile(output_folder + "F.xdmf")
-    F.rename("F","deformation gradient")
-    F_file.write(F)
+    F_file.write(F_proj)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
     J.rename("J","Jacobian")
+    J_file = df.XDMFFile(output_folder + "J.xdmf")
     J_file.write(J)
 
-    p_file = df.XDMFFile(output_folder + "p.xdmf")
     p.rename("p","pressure")
+    p_file = df.XDMFFile(output_folder + "p.xdmf")
     p_file.write(p)
+
+    psi_proj.rename("psi", "strain energy density")
+    psi_file = df.XDMFFile(output_folder + "psi.xdmf")
+    psi_file.write(psi_proj)
 
 if __name__=="__main__":
     main()
