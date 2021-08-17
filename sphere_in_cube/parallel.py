@@ -1,10 +1,11 @@
 import dolfin as df
 import os
+import shutil
 import sys
 import time
 import numpy as np
+import argparse
 from mpi4py import MPI
-from shutil import copyfile
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -14,39 +15,57 @@ df.parameters['form_compiler']['quadrature_degree'] = 3
 df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 10000
-df.set_log_level(40)
 
 """
 Written by: John Steinman
 """
 
-def main():
+def main(c):
 
     params = {}
 
-    params['output_folder'] = './output/constant/1000x/'
+    params['mesh'] = "./meshes/hole.xdmf"
+    params['domains'] = "./meshes/hole_domains.xdmf"
+    params['boundaries'] = "./meshes/hole_boundaries.xdmf"
 
-    params['mesh'] = "hole_3"
+    params['mu_ff'] = 100e12
+    params['c'] = c
+    params['near_field'] = 50
 
-    params['c1'] = df.Constant(1.0)
-    params['c2'] = df.Constant(1000.0)
+    params['output_folder'] = './output/MS/MUx' + str(params['c']) + '/'
 
     solver_call(params)
+
+class ShearModulus(df.UserExpression):
+    def __init__(self, mu_ff, c, L, *args, **kwargs):
+        self.mu_ff = mu_ff
+        self.c = c
+        self.L = L
+        super().__init__(*args, **kwargs)
+
+    def value_shape(self):
+        return()
+
+    def eval(self, value, x):
+        if abs(x[0])<=self.L/2 and abs(x[1])<=self.L/2 and abs(x[2])<=self.L/2:
+            value[0]=self.mu_ff*self.c
+        else:   
+            value[0]=self.mu_ff
 
 def solver_call(params):
 
     # Mesh
     mesh = df.Mesh()
-    with df.XDMFFile("meshes/" + params["mesh"] + ".xdmf") as infile:
+    with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
-    with df.XDMFFile("meshes/" + params["mesh"] + "_domains.xdmf") as infile:
+    with df.XDMFFile(params["domains"]) as infile:
         infile.read(mvc, "domains") 
     domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
-    with df.XDMFFile("meshes/" + params["mesh"] + "_boundaries.xdmf") as infile:
+    with df.XDMFFile(params["boundaries"]) as infile:
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
@@ -85,13 +104,19 @@ def solver_call(params):
     Ju = df.det(F)
     C = F.T*F                      # Right Cauchy-Green tensor
     C_bar = C/Ju**(2/d)            # Isochoric decomposition
-
-    # Invariants of deformation tensors
-    IC_bar = df.tr(C_bar)
+    IC_bar = df.tr(C_bar)          # Invariant of isochoric C
 
     # Material parameters
-    c1 = params["c1"]
-    c2 = params["c2"]
+    mu_ff = params["mu_ff"]
+    c = params["c"]
+    near_field = params["near_field"]
+
+    mu = ShearModulus(mu_ff, c, near_field)
+    nu = 0.499 
+    kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
+
+    c1 = mu/2
+    c2 = df.Constant(kappa)
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -105,7 +130,7 @@ def solver_call(params):
 
     # Boundary Conditions
     zero = df.Constant((0.0, 0.0, 0.0))
-    u_inner = df.Expression(["t*x[0]/10","t*x[1]/10","-t*2*x[2]/10"], t=0, degree=2)
+    u_inner = df.Expression(["x[0]/12.5*c*t","x[1]/12.5*c*t","x[2]/12.5*c*t"], c=0, t=0, degree=1)
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
@@ -120,6 +145,8 @@ def solver_call(params):
     # MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
 
     val = np.array(len(mesh.cells()),'d')
     val_sum = np.array(0.,'d')
@@ -128,6 +155,10 @@ def solver_call(params):
     if rank == 0:
         print("Mesh: ", params["mesh"])
         print('Total number of elements = {:d}'.format(int(val_sum)))
+        print("mu_ff = {:5.3e}".format(mu_ff))
+        print("c     = {:f}".format(c))
+        print("kappa = {:5.3e}".format(kappa))
+        print("Solving =========================")
 
     # Solve
     chunks = 1
@@ -135,6 +166,8 @@ def solver_call(params):
     sys.stdout.flush() 
     for i in range(chunks):
         start = time.time()
+        if rank == 0:
+            print("    Iter: ", i)
 
         u_inner.t = (i+1)/chunks
         solver.solve()
@@ -143,15 +176,15 @@ def solver_call(params):
         time_elapsed = end - start
 
         if rank == 0:
-            print("    Iter: ", i)
-            print('    Time elapsed = {:2.1f}s'.format(time_elapsed))
+            print('    Time elapsed = {:2.1f}s\n'.format(time_elapsed))
         sys.stdout.flush()  
 
     u, p, J = xi.split(True)
 
     # Projections
-    F = df.Identity(3) + df.grad(u)
-    F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    # F = df.Identity(3) + df.grad(u)
+    # F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
 
     # Outputs
     output_folder = params["output_folder"]    
@@ -159,26 +192,36 @@ def solver_call(params):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
+    mu_file = df.XDMFFile(output_folder + "mu.xdmf")
+    mu.rename("mu", "Shear Modulus")
+    mu_file.write(mu)
+
     disp_file = df.XDMFFile(output_folder + "U.xdmf")
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = df.XDMFFile(output_folder + "F.xdmf")
-    F.rename("F","deformation gradient")
-    F_file.write(F)
+    # F_file = df.XDMFFile(output_folder + "F.xdmf")
+    # F.rename("F","deformation gradient")
+    # F_file.write(F)
 
     J_file = df.XDMFFile(output_folder + "J.xdmf")
     J.rename("J","Jacobian")
     J_file.write(J)
 
-    p_file = df.XDMFFile(output_folder + "p.xdmf")
-    p.rename("p","pressure")
-    p_file.write(p)
+    # p_file = df.XDMFFile(output_folder + "p.xdmf")
+    # p.rename("p","pressure")
+    # p_file.write(p)
 
     if rank == 0:
         print("Results in: ", output_folder)
         print("Done")
         print("========================================")
 
+        shutil.move("log", output_folder+"log")
+        shutil.copyfile("parallel.py", output_folder+"parallel.py")
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('c', type=float, help='shear modulus multiplier')
+    args = parser.parse_args()
+    main(args.c)
