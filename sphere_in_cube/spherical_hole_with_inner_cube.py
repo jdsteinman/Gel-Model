@@ -181,7 +181,8 @@ def solver_call(params):
         print("Length of outer boundary = {:f}".format(int(mesh_length)))
         print("Solving =========================")
 
-    output_folder = params["output_folder"]+"L="+str(int(mesh_length))+"/"
+    output_folder = os.path.join(params["output_folder"],"L="+str(int(mesh_length)))
+    print(output_folder)
     if rank==0:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
@@ -205,19 +206,19 @@ def solver_call(params):
     mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
 
     # Outputs
-    mu_file = df.XDMFFile(output_folder + "mu.xdmf")
+    mu_file = df.XDMFFile(os.path.join(output_folder, "mu.xdmf"))
     mu.rename("mu", "Shear Modulus")
     mu_file.write(mu)
 
-    disp_file = df.XDMFFile(output_folder + "U.xdmf")
+    disp_file = df.XDMFFile(os.path.join(output_folder, "U.xdmf"))
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = df.XDMFFile(output_folder + "F.xdmf")
+    F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
     F.rename("F", "Deformation Gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
+    J_file = df.XDMFFile(os.path.join(output_folder, "J.xdmf"))
     J.rename("J","Jacobian")
     J_file.write(J)
 

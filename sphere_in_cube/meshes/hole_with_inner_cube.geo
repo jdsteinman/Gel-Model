@@ -1,16 +1,16 @@
 SetFactory("OpenCASCADE");
 
 // Parameters
-LL = 150;  // Side length of box
+LL = 250;  // Side length of box
 ll = 50;   // Side length of near field
-R  = 15;  // radius of sphere
+D  = 25;  // diameter of sphere
 
 // Box
 Box(1) = {-LL/2, -LL/2, -LL/2, LL, LL, LL};
 Box(2) = {-ll/2, -ll/2, -ll/2, ll, ll, ll};
 
 // Sphere
-Sphere(3) = {0, 0, 0, R};
+Sphere(3) = {0, 0, 0, D/2};
 
 // Difference
 BooleanDifference{Volume{1}; Delete;}{Volume{2}; }
