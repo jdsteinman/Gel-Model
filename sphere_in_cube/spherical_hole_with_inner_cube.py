@@ -31,11 +31,11 @@ def main():
     params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
     params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
 
-    params['mu_ff'] = 100e6
+    params['mu_ff'] = 100e-6
     params['c'] = 1
     params['u_inner'] = 2
 
-    params['output_folder'] = './output/hole_with_inner_cube/C=' + str(params['c']) + '/'
+    params['output_folder'] = './output/hole_with_inner_cube/'
 
     solver_call(params)
 
@@ -75,6 +75,7 @@ class ShearModulus(df.UserExpression):
             value[0]=self.mu_ff
 
 def solver_call(params):
+
     # Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
@@ -172,24 +173,29 @@ def solver_call(params):
     ele_sum = np.array(0.,'d')
     comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
 
-    mesh_length = 2*mesh.coordinates()[:,0].min()
+    mesh_length = 2*mesh.coordinates()[:,0].max()
 
     if rank == 0:
         print("Mesh: ", params["mesh"])
-        print('Total number of elements = {:d}'.format(ele_sum))
-        print("Length of outer boundary = {:f}".format(mesh_length))
+        print('Total number of elements = {:d}'.format(int(ele_sum)))
+        print("Length of outer boundary = {:f}".format(int(mesh_length)))
         print("Solving =========================")
 
+    output_folder = params["output_folder"]+"L="+str(int(mesh_length))+"/"
+    if rank==0:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
     # Solve
-    chunks = 5
+    chunks = 1
     total_start = time.time()
     for i in range(chunks):
-        print("\nIteration: ", i)
+        if rank==0: print("Iteration: ", i)
         start = time.time()
         u_inner.t = (i+1)/chunks
         solver.solve()
-        print("Time: ", time.time()-start) 
-    print("Total Time: ", time.time() - total_start, "s")
+        if rank==0: print("Time: ", time.time()-start) 
+    if rank==0: print("Total Time: ", time.time() - total_start, "s")
 
     u, p, J = xi.split(True)
 
@@ -199,10 +205,6 @@ def solver_call(params):
     mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
 
     # Outputs
-    output_folder = params["output_folder"]
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
     mu_file = df.XDMFFile(output_folder + "mu.xdmf")
     mu.rename("mu", "Shear Modulus")
     mu_file.write(mu)
@@ -220,8 +222,9 @@ def solver_call(params):
     J_file.write(J)
 
     if rank==0:
-        fname = os.path.dirname(os.path.abspath(__file__))
-        copyfile(fname, output_folder+fname)
+        fname = os.path.basename(__file__)
+        dir = os.path.dirname(os.path.abspath(__file__))
+        copyfile(os.path.join(dir,fname), output_folder+fname)
 
     with open(output_folder+"log_params", "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
@@ -230,6 +233,8 @@ def solver_call(params):
         f.write("mu_ff = {:e}\n".format(mu_ff))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("c =     {:f}\n".format(c))
+    
+    if rank==0: print("Done")
 
 if __name__ == "__main__":
     main()

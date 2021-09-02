@@ -1,4 +1,4 @@
 run:
-	nohup mpirun -np 5 python3 sphere_with_inner_cube.py >> log &
+	nohup mpirun -np 4 python3 spherical_hole_with_inner_cube.py >> log &
 clean:
 	-rm log
