@@ -1,4 +1,6 @@
 import dolfin as df
+from mpi4py import MPI
+from shutil import copyfile 
 import numpy as np
 import sys
 import os
@@ -21,32 +23,55 @@ def main():
 
     params = {}
 
-    params['mesh'] = "./meshes/hole.xdmf"
-    params['domains'] = "./meshes/hole_domains.xdmf"
-    params['boundaries'] = "./meshes/hole_boundaries.xdmf"
+    # params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
+    # params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
+    # params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
 
-    params['mu_ff'] = 100e12
-    params['c'] = 0.1
-    params['near_field'] = 50
+    params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
+    params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
+    params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
 
-    params['output_folder'] = './output/hole/C=' + str(params['c']) + '/'
+    params['mu_ff'] = 100e6
+    params['c'] = 1
+    params['u_inner'] = 2
+
+    params['output_folder'] = './output/hole_with_inner_cube/C=' + str(params['c']) + '/'
 
     solver_call(params)
 
+# class ShearModulus(df.UserExpression):
+#     def __init__(self, mu_ff, c, L, *args, **kwargs):
+#         self.mu_ff = mu_ff
+#         self.c = c
+#         self.L = L
+#         super().__init__(*args, **kwargs)
+
+#     def value_shape(self):
+#         return()
+
+#     def eval(self, value, x):
+#         if abs(x[0])<=self.L/2 and abs(x[1])<=self.L/2 and abs(x[2])<=self.L/2:
+#             value[0]=self.mu_ff*self.c
+#         else:   
+#             value[0]=self.mu_ff
+
 class ShearModulus(df.UserExpression):
-    def __init__(self, mu_ff, c, L, *args, **kwargs):
+    def __init__(self, mu_ff, c, mf, *args, **kwargs):
         self.mu_ff = mu_ff
         self.c = c
-        self.L = L
+        self.mf = mf
         super().__init__(*args, **kwargs)
 
     def value_shape(self):
         return()
 
-    def eval(self, value, x):
-        if abs(x[0])<=self.L/2 and abs(x[1])<=self.L/2 and abs(x[2])<=self.L/2:
+    def eval_cell(self, value, x, cell):
+        if self.mf.array()[cell.index]==302:
             value[0]=self.mu_ff*self.c
-        else:   
+        elif self.mf.array()[cell.index]==301: 
+            value[0]=self.mu_ff
+        else:
+            print("Unknown cell index")
             value[0]=self.mu_ff
 
 def solver_call(params):
@@ -55,10 +80,6 @@ def solver_call(params):
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
-    # df.plot(mesh)
-    # import matplotlib.pyplot as plt
-    # plt.show()
-    # quit()
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["domains"]) as infile:
         infile.read(mvc, "domains") 
@@ -109,9 +130,8 @@ def solver_call(params):
     # Material parameters
     mu_ff = params["mu_ff"]
     c = params["c"]
-    near_field = params["near_field"]
 
-    mu = ShearModulus(mu_ff, c, near_field)
+    mu = ShearModulus(mu_ff, c, domains)
     nu = 0.499 
     kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
 
@@ -122,7 +142,7 @@ def solver_call(params):
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
 
     # Total potential energy
-    Pi = psi*dx(301) - df.dot(B, u)*dx - df.dot(T, u)*ds
+    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Gateaux Derivative
     res = df.derivative(Pi, xi, xi_)
@@ -130,12 +150,10 @@ def solver_call(params):
 
     # Boundary Conditions
     zero = df.Constant((0.0, 0.0, 0.0))
-    u_inner = df.Expression(["x[0]/15*c*t","x[1]/15*c*t","x[2]/15*c*t"], c=, t=0, degree=1)
+    u_mag = params['u_inner']
+    u_inner = df.Expression(["x[0]/15*c*t","x[1]/15*c*t","x[2]/15*c*t"], c=u_mag, t=0, degree=1)
 
-    xsides = df.CompiledSubDomain("near(abs(x[0]), 75) && abs(x[1])<20 && abs(x[2])<20 && on_boundary")
-
-    outer_bc_y = df.DirichletBC(V_u.sub(1), df.Constant(0.), xsides)
-    outer_bc_z = df.DirichletBC(V_u.sub(2), df.Constant(0.), xsides)
+    outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
     bcs = [inner_bc]
 
@@ -143,6 +161,24 @@ def solver_call(params):
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'lu'
+
+    # MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
+
+    ele = np.array(len(mesh.cells()),'d') # Number of elements
+    ele_sum = np.array(0.,'d')
+    comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
+
+    mesh_length = 2*mesh.coordinates()[:,0].min()
+
+    if rank == 0:
+        print("Mesh: ", params["mesh"])
+        print('Total number of elements = {:d}'.format(ele_sum))
+        print("Length of outer boundary = {:f}".format(mesh_length))
+        print("Solving =========================")
 
     # Solve
     chunks = 5
@@ -183,9 +219,14 @@ def solver_call(params):
     J.rename("J","Jacobian")
     J_file.write(J)
 
+    if rank==0:
+        fname = os.path.dirname(os.path.abspath(__file__))
+        copyfile(fname, output_folder+fname)
+
     with open(output_folder+"log_params", "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
         f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
+        f.write("Length of outer boundary = {:f}".format(mesh_length))
         f.write("mu_ff = {:e}\n".format(mu_ff))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("c =     {:f}\n".format(c))

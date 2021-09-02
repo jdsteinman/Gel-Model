@@ -4,7 +4,6 @@ import shutil
 import sys
 import time
 import numpy as np
-import argparse
 from mpi4py import MPI
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
@@ -20,7 +19,7 @@ df.parameters['krylov_solver']['maximum_iterations'] = 10000
 Written by: John Steinman
 """
 
-def main(c):
+def main():
 
     params = {}
 
@@ -29,10 +28,10 @@ def main(c):
     params['boundaries'] = "./meshes/hole_boundaries.xdmf"
 
     params['mu_ff'] = 100e12
-    params['c'] = c
+    params['c'] = 0.1
     params['near_field'] = 50
 
-    params['output_folder'] = './output/MS/MUx' + str(params['c']) + '/'
+    params['output_folder'] = './output/hole/C=' + str(params['c']) + '/'
 
     solver_call(params)
 
@@ -118,30 +117,28 @@ def solver_call(params):
     c1 = mu/2
     c2 = df.Constant(kappa)
 
-    # Stored strain energy density (mixed formulation)
-    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
-
-    # Total potential energy
-    Pi = psi*dx(301) - df.dot(B, u)*dx - df.dot(T, u)*ds
-
+    # Stored strain energy densit    # MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
     # Compute first variation of Pi (directional derivative about u in the direction of w)
     res = df.derivative(Pi, xi, xi_)
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
     zero = df.Constant((0.0, 0.0, 0.0))
-    u_inner = df.Expression(["x[0]/12.5*c*t","x[1]/12.5*c*t","x[2]/12.5*c*t"], c=0, t=0, degree=1)
+    u_inner = df.Expression(["x[0]/15*c*t","x[1]/15*c*t","x[2]/15*c*t"], c=5, t=1, degree=1)
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
-
     bcs = [outer_bc, inner_bc]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
-    
+    solver.parameters['newton_solver']['linear_solver'] = 'lu'
+
     # MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -161,13 +158,13 @@ def solver_call(params):
         print("Solving =========================")
 
     # Solve
-    chunks = 1
+    chunks = 5
     start = time.time()
     sys.stdout.flush() 
     for i in range(chunks):
         start = time.time()
         if rank == 0:
-            print("    Iter: ", i)
+            print("Iteration: ", i)
 
         u_inner.t = (i+1)/chunks
         solver.solve()
@@ -176,14 +173,14 @@ def solver_call(params):
         time_elapsed = end - start
 
         if rank == 0:
-            print('    Time elapsed = {:2.1f}s\n'.format(time_elapsed))
+            print('Time elapsed = {:2.1f}s\n'.format(time_elapsed))
         sys.stdout.flush()  
 
     u, p, J = xi.split(True)
 
     # Projections
-    # F = df.Identity(3) + df.grad(u)
-    # F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    F = df.Identity(3) + df.grad(u)
+    F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
 
     # Outputs
@@ -213,15 +210,15 @@ def solver_call(params):
     # p_file.write(p)
 
     if rank == 0:
-        print("Results in: ", output_folder)
-        print("Done")
-        print("========================================")
+        with open(output_folder+"log_params.txt", "w+") as f:
+            f.write("Mesh: {:s}\n".format(params["mesh"]))
+            f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
+            f.write("mu_ff = {:e}\n".format(mu_ff))
+            f.write("kappa = {:e}\n".format(kappa))
+            f.write("c =     {:f}\n".format(c))
 
-        shutil.move("log", output_folder+"log")
+        shutil.copyfile("log", output_folder+"log")
         shutil.copyfile("parallel.py", output_folder+"parallel.py")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('c', type=float, help='shear modulus multiplier')
-    args = parser.parse_args()
-    main(args.c)
+    main()
