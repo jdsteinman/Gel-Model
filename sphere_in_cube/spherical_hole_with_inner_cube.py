@@ -35,7 +35,7 @@ def main():
     params['c'] = 1
     params['u_inner'] = 2
 
-    params['output_folder'] = './output/hole_with_inner_cube/'
+    params['output_folder'] = './output/hole_with_inner_cube/L_250'
 
     solver_call(params)
 
@@ -173,16 +173,13 @@ def solver_call(params):
     ele_sum = np.array(0.,'d')
     comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
 
-    mesh_length = 2*mesh.coordinates()[:,0].max()
-
     if rank == 0:
         print("Mesh: ", params["mesh"])
         print('Total number of elements = {:d}'.format(int(ele_sum)))
-        print("Length of outer boundary = {:f}".format(int(mesh_length)))
         print("Solving =========================")
 
-    output_folder = os.path.join(params["output_folder"],"L="+str(int(mesh_length)))
-    print(output_folder)
+    output_folder = params["output_folder"]
+    print(type(output_folder))
     if rank==0:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
@@ -230,7 +227,6 @@ def solver_call(params):
     with open(output_folder+"log_params", "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
         f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
-        f.write("Length of outer boundary = {:f}".format(mesh_length))
         f.write("mu_ff = {:e}\n".format(mu_ff))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("c =     {:f}\n".format(c))
