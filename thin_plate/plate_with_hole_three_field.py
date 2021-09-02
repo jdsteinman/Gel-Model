@@ -3,6 +3,8 @@ import sys
 import os
 import time
 
+from numpy.core.numeric import outer
+
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
@@ -88,11 +90,9 @@ def solver_call(params):
     C = F.T*F                   # Right Cauchy-Green tensor
     b = F*F.T                   # Left Cauchy-Greem tensor
     C_bar = C/Ju**(2/d)         # Isochoric C
-    b_bar = b/Ju**(2/d)         # Isochoric b
 
     # Invariants of deformation tensors
     IC_bar = df.tr(C_bar)
-    Ib_bar = df.tr(b_bar)
 
     # Material parameters
     c1 = params['c1']
@@ -126,7 +126,7 @@ def solver_call(params):
         sys.exit()
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 101)
-    bcs = [inner_bc]
+    bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
