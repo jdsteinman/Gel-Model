@@ -173,16 +173,15 @@ def solver_call(params):
     ele_sum = np.array(0.,'d')
     comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
 
+    output_folder = params["output_folder"]
+    if rank==0:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder) 
+
     if rank == 0:
         print("Mesh: ", params["mesh"])
         print('Total number of elements = {:d}'.format(int(ele_sum)))
         print("Solving =========================")
-
-    output_folder = params["output_folder"]
-    print(type(output_folder))
-    if rank==0:
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
 
     # Solve
     chunks = 1
