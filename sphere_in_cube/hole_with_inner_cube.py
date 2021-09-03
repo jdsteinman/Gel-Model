@@ -23,37 +23,19 @@ def main():
 
     params = {}
 
-    # params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
-    # params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
-    # params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
-
+    L=150
     params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
     params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
     params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
 
     params['mu_ff'] = 100e-6
     params['c'] = 1
-    params['u_inner'] = 2
+    params['u_inner'] = -2
+    params['L']=L
 
-    params['output_folder'] = './output/hole_with_inner_cube/L_250'
+    params['output_folder'] = './output/hole_with_inner_cube/'
 
     solver_call(params)
-
-# class ShearModulus(df.UserExpression):
-#     def __init__(self, mu_ff, c, L, *args, **kwargs):
-#         self.mu_ff = mu_ff
-#         self.c = c
-#         self.L = L
-#         super().__init__(*args, **kwargs)
-
-#     def value_shape(self):
-#         return()
-
-#     def eval(self, value, x):
-#         if abs(x[0])<=self.L/2 and abs(x[1])<=self.L/2 and abs(x[2])<=self.L/2:
-#             value[0]=self.mu_ff*self.c
-#         else:   
-#             value[0]=self.mu_ff
 
 class ShearModulus(df.UserExpression):
     def __init__(self, mu_ff, c, mf, *args, **kwargs):
@@ -152,11 +134,15 @@ def solver_call(params):
     # Boundary Conditions
     zero = df.Constant((0.0, 0.0, 0.0))
     u_mag = params['u_inner']
-    u_inner = df.Expression(["x[0]/15*c*t","x[1]/15*c*t","x[2]/15*c*t"], c=u_mag, t=0, degree=1)
+    u_inner = df.Expression(["x[0]/r*c*t","x[1]/r*c*t","x[2]/r*c*t"], r=12.5, c=u_mag, t=0, degree=1)
+    length = params["L"]
+    xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<5 && abs(x[2])<5 && on_boundary", R=length/2)
 
-    outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
+    # outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
+    bc_x1    = df.DirichletBC(V_u.sub(1), df.Constant(0.), xboundary, method="pointwise")
+    bc_x2    = df.DirichletBC(V_u.sub(2), df.Constant(0.), xboundary, method="pointwise")
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
-    bcs = []
+    bcs = [inner_bc, bc_x1, bc_x2]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
