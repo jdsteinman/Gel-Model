@@ -156,7 +156,7 @@ def solver_call(params):
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
-    bcs = [inner_bc]
+    bcs = []
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -223,7 +223,7 @@ def solver_call(params):
         dir = os.path.dirname(os.path.abspath(__file__))
         copyfile(os.path.join(dir,fname), output_folder+fname)
 
-    with open(output_folder+"log_params", "w+") as f:
+    with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
         f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
         f.write("mu_ff = {:e}\n".format(mu_ff))
