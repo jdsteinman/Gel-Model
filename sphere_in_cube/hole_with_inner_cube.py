@@ -24,16 +24,16 @@ def main():
     params = {}
 
     L=150
-    params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
-    params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
-    params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
+    params['mesh'] = "./meshes/hole_with_inner_cube_"+str(L)+".xdmf"
+    params['domains'] = "./meshes/hole_with_inner_cube_domains_"+str(L)+".xdmf"
+    params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries_"+str(L)+".xdmf"
 
     params['mu_ff'] = 100e-6
     params['c'] = 1
     params['u_inner'] = -2
-    params['L']=L
+    params['L'] = L
 
-    params['output_folder'] = './output/hole_with_inner_cube/'
+    params['output_folder'] = './output/hole_with_inner_cube/'+str(L)
 
     solver_call(params)
 
@@ -56,8 +56,8 @@ class ShearModulus(df.UserExpression):
             print("Unknown cell index")
             value[0]=self.mu_ff
 
-def solver_call(params):
 
+def solver_call(params):
     # Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
@@ -136,13 +136,16 @@ def solver_call(params):
     u_mag = params['u_inner']
     u_inner = df.Expression(["x[0]/r*c*t","x[1]/r*c*t","x[2]/r*c*t"], r=12.5, c=u_mag, t=0, degree=1)
     length = params["L"]
+
     xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<5 && abs(x[2])<5 && on_boundary", R=length/2)
+    corners = df.CompiledSubDomain("near(abs(x[0]), R) && near(abs(x[3]), R) && near(abs(x[2]), R) && on_boundary", R=length/2)
 
     # outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     bc_x1    = df.DirichletBC(V_u.sub(1), df.Constant(0.), xboundary, method="pointwise")
     bc_x2    = df.DirichletBC(V_u.sub(2), df.Constant(0.), xboundary, method="pointwise")
-    inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
-    bcs = [inner_bc, bc_x1, bc_x2]
+    bc_corners = df.DirichletBC(V, df.Constant((0., 0., 0.)), xboundary, method="pointwise")
+    bc_inner = df.DirichletBC(V_u, u_inner, boundaries, 202)
+    bcs = [bc_inner, bc_corners]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -207,7 +210,7 @@ def solver_call(params):
     if rank==0:
         fname = os.path.basename(__file__)
         dir = os.path.dirname(os.path.abspath(__file__))
-        copyfile(os.path.join(dir,fname), output_folder+fname)
+        copyfile(os.path.join(dir,fname), os.path.join(output_folder,fname))
 
     with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
