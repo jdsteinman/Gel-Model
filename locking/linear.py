@@ -6,7 +6,7 @@ import os
 
 def main():
     # Parameters
-    E = 70.0e6  # Youngs modulus
+    E = 70.0e6   # Youngs modulus
     nu = 0.4999  # Poissons ratio
     lmbda, mu = E*nu/(1 + nu)/(1 - 2*nu), E/2/(1 + nu)  # Lame's constant
 

@@ -8,8 +8,8 @@ import os
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
-df.parameters['form_compiler']['cpp_optimize'] = True
-df.parameters['form_compiler']['quadrature_degree'] = 2
+df.parameters['form_compiler']['cpp_optimize'] = False
+df.parameters['form_compiler']['quadrature_degree'] = 3
 df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 100000
@@ -18,7 +18,7 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def three_field():
     # Geometry
     l_x, l_y = 5.0, 5.0  # Domain dimensions
-    n_x, n_y = 20, 20    # Number of elements
+    n_x, n_y = 20, 120    # Number of elements
     mesh = df.RectangleMesh(df.Point(0.0,0.0), df.Point(l_x, l_y), n_x, n_y)    
 
     # Subdomains
@@ -33,15 +33,11 @@ def three_field():
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    V = df.VectorElement('Lagrange', mesh.ufl_cell(), 3)
-    W = df.FiniteElement('Lagrange', mesh.ufl_cell(), 1)
-    R = df.FiniteElement('Lagrange', mesh.ufl_cell(), 1)   
+    V = df.VectorElement('CG', mesh.ufl_cell(), 3)
+    W = df.FiniteElement('DG', mesh.ufl_cell(), 0)
+    R = df.FiniteElement('DG', mesh.ufl_cell(), 0)   
     M = df.FunctionSpace(mesh, df.MixedElement([V,W,R]))
     V, W, R = M.split()
-
-    # Trial and Test functions
-    dxi = df.TrialFunction(M)
-    xi_ = df.TestFunction(M)
 
     # Functions from most recent iteration
     xi = df.Function(M) 
@@ -53,44 +49,53 @@ def three_field():
     df.assign(xi, [u_0, p_0, J_0])
 
     # Variational forms
-    u, p, Jt = df.split(xi)
+    u, p, J = df.split(xi)
 
     # Parameters
-    nu = 0.4999  # Poissons ratio
-    mu = 1.45e7
-    lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
-    kappa = lmbda+2*mu/3
-    c1 = kappa/4
-    c2=mu/2
+    # nu = 0.49     # Poissons ratio
+    # mu = 1
+    # lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
+    # kappa = lmbda+2*mu/3
+    # c1 = df.Constant(kappa)
+    # c2 = df.Constant(mu/2)
 
-    g_int = -1e7                # load
-    B = df.Constant((0, 0))     # Body force per unit volume
-    T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=1)
+    # nu = 0.4  # Poissons ratio
+    # mu = 1e-6
+    # lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
+    # kappa = lmbda+2*mu/3
+    # c1 = df.Constant(kappa)
+    # c2 = df.Constant(mu/2)
+
+    E = 70.0e6   # Youngs modulus
+    nu = 0.4999  # Poissons ratio
+    lmbda = E*nu/(1 + nu)/(1 - 2*nu)
+    mu = E/2/(1 + nu)  # Lame's constant
+    kappa = lmbda+2*mu/3
+    c1 = df.Constant(mu/2)
+    c2 = df.Constant(kappa)
+
+    g_int = 0
+    B = df.Constant((0., 0.))     # Body force per unit volume
+    T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
 
     # Kinematics
     d = u.geometric_dimension()
-    I = Identity(d)             # Identity tensor
-    F = I + grad(u)             # Deformation gradient
-    C = F.T*F                   # Right Cauchy-Green tensor
-    b = F*F.T                   # Left Cauchy-Greem tensor
+    I = df.Identity(d)             # Identity tensor
+    F = I + df.grad(u)             # Deformation gradient
+    Ju = df.det(F)
+    C = F.T*F                      # Right Cauchy-Green tensor
+    C_bar = C/Ju**(2/d)            # Isochoric decomposition
+    IC_bar = df.tr(C_bar)          # Invariant of isochoric C
 
-    # Invariants of deformation tensors
-    J = det(F)
-    I = tr(b) 
-    Ibar = I * J**-1
-
-    # Stored strain energy density
-    psi_1 = c1*(Jt**2-1-2*ln(Jt))
-    psi_2 = c2*(Ibar-2)
-    psi_3 = p*(J-Jt)
-    psi = psi_1 + psi_2 + psi_3
+    # Stored strain energy density (mixed formulation)
+    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
 
     # Total potential energy
-    Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds(1)
+    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
 
-    # Compute first variation of Pi (directional derivative about u in the direction of w)
-    F = df.derivative(Pi, xi, xi_)
-    Jac = df.derivative(F, xi, dxi)
+    # Gateaux Derivative
+    res = df.derivative(Pi, xi)
+    Dres = df.derivative(res, xi)
 
     # Boundary Conditions
     def bottom(x, on_boundary):
@@ -99,14 +104,15 @@ def three_field():
     bcs = df.DirichletBC(V, df.Constant((0.0, 0.0)), bottom)
 
     # Create nonlinear variational problem and solve
-    problem = df.NonlinearVariationalProblem(F, xi, bcs=bcs, J=Jac)
+    problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['relative_tolerance'] = 1e-2
-    solver.parameters['newton_solver']['maximum_iterations'] = 10
-    solver.parameters['newton_solver']['linear_solver'] = 'minres'
-    solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
+    # solver.parameters['newton_solver']['relative_tolerance'] = 1E-1
+    # solver.parameters['newton_solver']['maximum_iterations'] = 10
+    solver.parameters['newton_solver']['linear_solver'] = 'lu'
+    # solver.parameters['newton_solver']['linear_solver'] = 'minres'
+    # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
 
-    chunks = 250
+    chunks = 50
     total_start = time.time()
     for i in range(chunks):
         iter_start = time.time()
@@ -121,11 +127,15 @@ def three_field():
         print("Time: ", time.time() - iter_start)
 
     print("Total time: ", time.time() - total_start)
-    u, p, Jt = xi.split() 
+    u, p, J = xi.split() 
 
     # Post-process
     plot = df.plot(u, mode="displacement")
     plt.colorbar(plot)
+    plt.show()
+
+    plot2 = df.plot(J)
+    plt.colorbar(plot2)
     plt.show()
 
     # Outputs
@@ -137,6 +147,9 @@ def three_field():
     u.rename("U","displacement")
     disp_file.write(u)
 
+    J_file = df.XDMFFile(output_folder + "J.xdmf")
+    J.rename("J","Jacobian")
+    J_file.write(J)
 
 if __name__=="__main__":
     three_field()    

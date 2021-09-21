@@ -2,7 +2,7 @@ SetFactory("OpenCASCADE");
 
 // Parameters
 LL = 150;  // Side length of box
-ll = 50;   // Side length of near field
+ll = 75;   // Side length of near field
 D  = 25;  // diameter of sphere
 
 // Box
@@ -25,12 +25,12 @@ Physical Surface(203) = {7, 8, 9, 10, 11, 12};
 Physical Surface(201) = {14, 15, 16, 17, 18, 19};
 Physical Surface(202) = {13};
 
-Mesh.CharacteristicLengthFactor = 4;
-Characteristic Length{PointsOf{Physical Surface{202};}} = 2;
-Characteristic Length{PointsOf{Physical Surface{203};}} = 3;
+Mesh.CharacteristicLengthFactor = 3;
+Characteristic Length{PointsOf{Physical Surface{202};}} = 0.5;
+Characteristic Length{PointsOf{Physical Surface{203};}} = 2;
 Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 
 // Generate Mesh
 Mesh 3;
 Mesh.MshFileVersion = 2.2;
-Save "hole_with_inner_cube_150.msh";
+// Save "hole_with_inner_cube.msh";

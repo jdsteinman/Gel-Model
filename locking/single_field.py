@@ -18,7 +18,7 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def single_field():
 
     # Geometry
-    l_x, l_y = 5.0, 5.0  # Domain dimensions
+    l_x, l_y = 5, 5  # Domain dimensions
     n_x, n_y = 20, 20    # Number of elements
     mesh = df.RectangleMesh(df.Point(0.0,0.0), df.Point(l_x, l_y), n_x, n_y)    
 
@@ -34,7 +34,7 @@ def single_field():
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    deg = 3
+    deg = 2
     U = df.VectorElement('Lagrange', mesh.ufl_cell(), degree=deg)
     V = df.FunctionSpace(mesh, U)
 
@@ -44,10 +44,10 @@ def single_field():
 
     # Parameters
     nu = 0.4999  # Poissons ratio
-    mu = 1.35e7
+    mu = 80.194
     lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
 
-    g_int = -1e7                # load
+    g_int = -100                # load
     B = df.Constant((0, 0))     # Body force per unit volume
     T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=1)
 
@@ -80,14 +80,14 @@ def single_field():
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['relative_tolerance'] = 1E-2
-    solver.parameters['newton_solver']['maximum_iterations'] = 10
+    # solver.parameters['newton_solver']['relative_tolerance'] = 1E-4
+    # solver.parameters['newton_solver']['maximum_iterations'] = 10
     # solver.parameters['newton_solver']['linear_solver'] = 'lu'
-    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
+    # solver.parameters['newton_solver']['linear_solver'] = 'mumps'
     # solver.parameters['newton_solver']['linear_solver'] = 'minres'
     # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
 
-    chunks = 2000
+    chunks = 100
     total_start = time.time()
     for i in range(chunks):
         iter_start = time.time()
