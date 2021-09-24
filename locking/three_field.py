@@ -1,7 +1,5 @@
 import dolfin as df
-from dolfin import dot, ln, det, grad, tr, Identity
 import matplotlib.pyplot as plt
-import numpy as np
 import time
 import os
 
@@ -58,21 +56,6 @@ def three_field():
     c1 = df.Constant(kappa)
     c2 = df.Constant(mu/2)
 
-    # nu = 0.4  # Poissons ratio
-    # mu = 1e-6
-    # lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
-    # kappa = lmbda+2*mu/3
-    # c1 = df.Constant(kappa)
-    # c2 = df.Constant(mu/2)
-
-    # E = 70.0e6   # Youngs modulus
-    # nu = 0.4999  # Poissons ratio
-    # lmbda = E*nu/(1 + nu)/(1 - 2*nu)
-    # mu = E/2/(1 + nu)  # Lame's constant
-    # kappa = lmbda+2*mu/3
-    # c1 = df.Constant(mu/2)
-    # c2 = df.Constant(kappa)
-
     g_int = 1e-1
     B = df.Constant((0., 0.))     # Body force per unit volume
     T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
@@ -105,12 +88,8 @@ def three_field():
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    # solver.parameters['newton_solver']['relative_tolerance'] = 1E-1
-    # solver.parameters['newton_solver']['maximum_iterations'] = 10
     solver.parameters['newton_solver']['linear_solver'] = 'lu'
-    # solver.parameters['newton_solver']['linear_solver'] = 'minres'
-    # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
-
+  
     chunks = 5
     total_start = time.time()
     for i in range(chunks):
@@ -118,7 +97,7 @@ def three_field():
         print("Solver Call: ", i)
         print("----------------")
 
-        # Increment eigenstrain
+        # Increment traction force
         T.t = (i+1)/chunks
 
         ## Solver
