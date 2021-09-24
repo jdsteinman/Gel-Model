@@ -18,13 +18,14 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def single_field():
 
     # Geometry
-    mesh = df.BoxMesh(df.Point(0,0,0),df.Point(1,1,1), 4,4,4)    
+    N = 15
+    mesh = df.UnitCubeMesh(N, N, N)
 
     # Subdomains
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
 
-    top = df.CompiledSubDomain("on_boundary && x[0]>0.5 && x[1]>0.5 and near(x[2], 1)")
+    top = df.CompiledSubDomain("on_boundary && near(x[2], 1)")
     top.mark(boundaries, 1)
 
     # Measures
@@ -32,66 +33,54 @@ def single_field():
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    deg = 2
-    U = df.VectorElement('Lagrange', mesh.ufl_cell(), degree=deg)
+    U = df.VectorElement('Lagrange', mesh.ufl_cell(), degree=1)
     V = df.FunctionSpace(mesh, U)
 
     du, w = df.TrialFunction(V), df.TestFunction(V) 
     u = df.Function(V)
     u.vector()[:] = 0
 
-    # Parameters
-    nu = 0.45  # Poissons ratio
-    mu = 240.565
+    # Material Properties
+    nu = 0.4999     # Poissons ratio
+    mu = 1
     lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
+    kappa = lmbda+2*mu/3
 
-    g_int = -160                   # load
+    # Forces
+    tf = -1e-1                     # load
     B = df.Constant((0, 0, 0))     # Body force per unit volume
-    T = df.Expression(("0", "0", "t*g"), t=0, g=g_int, degree=1)
+    T = df.Expression(("0", "0", "t*g"), t=0, g=tf, degree=0)
 
     # Kinematics
     d = u.geometric_dimension()
-    I = Identity(d)             # Identity tensor
-    F = I + grad(u)             # Deformation gradient
+    I = df.Identity(d)             # Identity tensor
+    F = I + df.grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
 
     # Invariants of deformation tensors
-    Ic = tr(C)
-    J  = det(F)
+    Ic = df.tr(C)
+    J  = df.det(F)
 
     # Stored strain energy density (compressible neo-Hookean model)
-    psi = (mu/2)*(Ic - 2) - mu*ln(J) + (lmbda/2)*(ln(J))**2
+    psi = (mu/2)*(Ic - d) - mu*df.ln(J) + (lmbda/2)*(df.ln(J))**2
 
     # Total potential energy
-    Pi = psi*dx - dot(B, u)*dx - dot(T, u)*ds(1)
+    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds(1)
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
-    F = df.derivative(Pi, u, w)
-    Jac = df.derivative(F, u, du)
+    res = df.derivative(Pi, u, w)
+    Dres = df.derivative(res, u, du)
 
     # Boundary Conditions
     def bottom(x, on_boundary):
         return (on_boundary and df.near(x[2], 0.0))
 
-    def yface(x, on_boundary):
-        return (on_boundary and df.near(x[0], 1.0))
-    
-    def xface(x, on_boundary):
-        return (on_boundary and df.near(x[1], 1.0))
-
-    bcs = [df.DirichletBC(V, df.Constant((0.0, 0.0, 0.0)), bottom),
-           df.DirichletBC(V.sub(0), df.Constant(0.0), xface),
-           df.DirichletBC(V.sub(1), df.Constant(0.0), yface)]
+    bc = df.DirichletBC(V, df.Constant((0.0, 0.0, 0.0)), bottom)
 
     # Create nonlinear variational problem and solve
-    problem = df.NonlinearVariationalProblem(F, u, bcs=bcs, J=Jac)
+    problem = df.NonlinearVariationalProblem(res, u, bcs=bc, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    # solver.parameters['newton_solver']['relative_tolerance'] = 1E-4
-    # solver.parameters['newton_solver']['maximum_iterations'] = 10
     solver.parameters['newton_solver']['linear_solver'] = 'lu'
-    # solver.parameters['newton_solver']['linear_solver'] = 'mumps'
-    # solver.parameters['newton_solver']['linear_solver'] = 'minres'
-    # solver.parameters['newton_solver']['preconditioner'] = 'ilu'
 
     chunks = 5
     total_start = time.time()
@@ -100,7 +89,7 @@ def single_field():
         print("Solver Call: ", i)
         print("----------------")
 
-        # Increment eigenstrain
+        # Increment traction force
         T.t = (i+1)/chunks
 
         ## Solver
