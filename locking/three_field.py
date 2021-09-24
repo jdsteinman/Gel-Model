@@ -17,15 +17,14 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
 def three_field():
     # Geometry
-    l_x, l_y = 5.0, 5.0  # Domain dimensions
-    n_x, n_y = 20, 120    # Number of elements
-    mesh = df.RectangleMesh(df.Point(0.0,0.0), df.Point(l_x, l_y), n_x, n_y)    
+    N = 50
+    mesh = df.UnitSquareMesh(N, N)
 
     # Subdomains
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
 
-    top = df.AutoSubDomain(lambda x: df.near(x[1], 5.0))
+    top = df.AutoSubDomain(lambda x: df.near(x[1], 1))
     top.mark(boundaries, 1)
 
     # Measures
@@ -33,9 +32,9 @@ def three_field():
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    V = df.VectorElement('CG', mesh.ufl_cell(), 3)
-    W = df.FiniteElement('DG', mesh.ufl_cell(), 0)
-    R = df.FiniteElement('DG', mesh.ufl_cell(), 0)   
+    V = df.VectorElement('CG', mesh.ufl_cell(), degree=1)
+    W = df.FiniteElement('DG', mesh.ufl_cell(), degree=0)
+    R = df.FiniteElement('DG', mesh.ufl_cell(), degree=0)   
     M = df.FunctionSpace(mesh, df.MixedElement([V,W,R]))
     V, W, R = M.split()
 
@@ -52,12 +51,12 @@ def three_field():
     u, p, J = df.split(xi)
 
     # Parameters
-    # nu = 0.49     # Poissons ratio
-    # mu = 1
-    # lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
-    # kappa = lmbda+2*mu/3
-    # c1 = df.Constant(kappa)
-    # c2 = df.Constant(mu/2)
+    nu = 0.4999     # Poissons ratio
+    mu = 1
+    lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
+    kappa = lmbda+2*mu/3
+    c1 = df.Constant(kappa)
+    c2 = df.Constant(mu/2)
 
     # nu = 0.4  # Poissons ratio
     # mu = 1e-6
@@ -66,15 +65,15 @@ def three_field():
     # c1 = df.Constant(kappa)
     # c2 = df.Constant(mu/2)
 
-    E = 70.0e6   # Youngs modulus
-    nu = 0.4999  # Poissons ratio
-    lmbda = E*nu/(1 + nu)/(1 - 2*nu)
-    mu = E/2/(1 + nu)  # Lame's constant
-    kappa = lmbda+2*mu/3
-    c1 = df.Constant(mu/2)
-    c2 = df.Constant(kappa)
+    # E = 70.0e6   # Youngs modulus
+    # nu = 0.4999  # Poissons ratio
+    # lmbda = E*nu/(1 + nu)/(1 - 2*nu)
+    # mu = E/2/(1 + nu)  # Lame's constant
+    # kappa = lmbda+2*mu/3
+    # c1 = df.Constant(mu/2)
+    # c2 = df.Constant(kappa)
 
-    g_int = 0
+    g_int = 1e-1
     B = df.Constant((0., 0.))     # Body force per unit volume
     T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
 
@@ -91,7 +90,7 @@ def three_field():
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
 
     # Total potential energy
-    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
+    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds(1)
 
     # Gateaux Derivative
     res = df.derivative(Pi, xi)
@@ -112,7 +111,7 @@ def three_field():
     # solver.parameters['newton_solver']['linear_solver'] = 'minres'
     # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
 
-    chunks = 50
+    chunks = 5
     total_start = time.time()
     for i in range(chunks):
         iter_start = time.time()
