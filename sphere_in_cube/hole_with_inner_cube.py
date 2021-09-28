@@ -187,11 +187,13 @@ def solver_call(params):
     chunks = 1
     total_start = time.time()
     for i in range(chunks):
-        if rank==0: print("Iteration: ", i)
         start = time.time()
+        if rank==0:    
+            print("Time: ", time.time()-start)
+            print("Iteration: ", i)
+
         u_inner.t = (i+1)/chunks
         solver.solve()
-        if rank==0: print("Time: ", time.time()-start)
     if rank==0: print("Total Time: ", time.time() - total_start, "s")
 
     u, p, J = xi.split(True)

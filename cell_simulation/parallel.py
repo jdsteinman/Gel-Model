@@ -6,7 +6,6 @@ import time
 import os
 import sys
 from mpi4py import MPI
-from shutil import copyfile
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -22,15 +21,18 @@ df.set_log_level(40)  # Supress output
 def main():
     params = {}
 
-    params['output_folder'] = './output/test/mesh_3/'
-
     params['mesh'] = "../cell_meshes/bird/hole.xdmf"
     params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
     params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
 
+    params['mu_ff'] = 100e-6
+    params['nu'] = 0.49
+
     params['surface_nodes'] = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
     params['surface_faces'] = np.loadtxt('../cell_data/bird/CytoD_faces.txt', int)
     params['displacements'] = np.loadtxt('../cell_data/bird/displacements.txt')
+
+    params['output_folder'] = './output/test/mesh_3/'
 
     solver_call(params)
 
@@ -91,8 +93,12 @@ def solver_call(params):
     IC_bar = df.tr(C_bar)
 
     # Material parameters
-    c1 = df.Constant(1.0)
-    c2 = df.Constant(1000.0)
+    mu = params["mu_ff"]
+    nu = params["nu"]
+    kappa = 2*mu*(1+nu)/3/(1-2*nu)
+
+    c1 = df.Constant(mu/2)
+    c2 = df.Constant(kappa)
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -124,25 +130,36 @@ def solver_call(params):
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
+    solver.parameters['newton_solver']['linear_solver'] = 'lu'
 
     # MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
 
-    val = np.array(len(mesh.cells()),'d')
-    val_sum = np.array(0.,'d')
-    comm.Reduce(val, val_sum, op=MPI.SUM, root=0)
+    ele = np.array(len(mesh.cells()),'d') # Number of elements
+    ele_sum = np.array(0.,'d')
+    comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
 
+    output_folder = params["output_folder"]
     if rank==0:
-        print("Nonlinear problem created")
-        print("Solving")
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
+        print("Mesh: ", params["mesh"])
+        print('Total number of elements = {:d}'.format(int(ele_sum)))
+        print("Solving =========================")
 
     # Solve
     chunks = 5
-    sys.stdout.flush() 
+    sys.stdout.flush()
+    total_start = time.time() 
     for i in range(chunks):
         start = time.time()
+        if rank==0:    
+            print("Time: ", time.time()-start)
+            print("Iteration: ", i)
 
         bf.scalar = (i+1)/chunks
         solver.solve()
@@ -156,19 +173,15 @@ def solver_call(params):
 
     u, p, J = xi.split(True)
 
-    # Assemble Solution
-    if rank==0:
-        u_local_vec = u.vector()  # Local solution vector
-        u_global_vec = df.Vector(MPI.comm_self, u_local_vec.local_size())
-        u_local_vec.gather(u_global_vec, V_u.dofmap.dofs())
+    # # Assemble Solution
+    # if rank==0:
+    #     u_local_vec = u.vector()  # Local solution vector
+    #     u_global_vec = df.Vector(MPI.comm_self, u_local_vec.local_size())
+    #     u_local_vec.gather(u_global_vec, V_u.dofmap.dofs())
 
-        u_global = df.Function(V_u, u_global_vec)
-
-    if rank == 0:
-        print("Writing Outputs")
+    #     u_global = df.Function(V_u, u_global_vec)
 
     # Projections
-    F = df.Identity(3) + df.grad(u)
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
 
     # Outputs
@@ -193,10 +206,16 @@ def solver_call(params):
     p.rename("p","pressure")
     p_file.write(p)
 
-    if rank == 0:
-        print("Results in: ", output_folder)
-        print("Done")
-        print("========================================")
+    with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
+        f.write("Mesh: {:s}\n".format(params["mesh"]))
+        f.write("No. Elements: {:d}\n".format(int(ele_sum)))
+        f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
+        f.write("mu_ff = {:e}\n".format(mu))
+        f.write("kappa = {:e}\n".format(kappa))
+        f.write("Total Time = {:f}s\n".format(time.time()-total_start))
+
+
+    if rank==0: print("Done")
 
 if __name__=="__main__":
     main()
