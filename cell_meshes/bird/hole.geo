@@ -67,4 +67,4 @@ Characteristic Length{PointsOf{Physical Surface{201};}} = 15;
 // Generate Mesh
 Mesh 3;
 Mesh.MshFileVersion = 2.2;
-Save "hole.msh";
+// Save "hole.msh";
