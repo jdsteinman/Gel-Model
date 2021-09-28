@@ -24,9 +24,9 @@ def main():
     params = {}
 
     L=150
-    params['mesh'] = "./meshes/hole_with_inner_cube_"+str(L)+".xdmf"
-    params['domains'] = "./meshes/hole_with_inner_cube_domains_"+str(L)+".xdmf"
-    params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries_"+str(L)+".xdmf"
+    params['mesh'] = "./meshes/hole_"+str(L)+".xdmf"
+    params['domains'] = "./meshes/hole_"+str(L)+"_domains.xdmf"
+    params['boundaries'] = "./meshes/hole_"+str(L)+"_boundaries.xdmf"
 
     params['mu_ff'] = 100e-6
     params['c'] = 1
@@ -132,20 +132,23 @@ def solver_call(params):
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
-    zero = df.Constant((0.0, 0.0, 0.0))
     u_mag = params['u_inner']
     u_inner = df.Expression(["x[0]/r*c*t","x[1]/r*c*t","x[2]/r*c*t"], r=12.5, c=u_mag, t=0, degree=1)
     length = params["L"]
 
-    xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<5 && abs(x[2])<5 && on_boundary", R=length/2)
-    corners = df.CompiledSubDomain("near(abs(x[0]), R) && near(abs(x[3]), R) && near(abs(x[2]), R) && on_boundary", R=length/2)
+    corners = df.CompiledSubDomain("near(abs(x[0]), R) && near(abs(x[1]), R) && near(abs(x[2]), R)", R=length/2)
 
     # outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
-    bc_x1    = df.DirichletBC(V_u.sub(1), df.Constant(0.), xboundary, method="pointwise")
-    bc_x2    = df.DirichletBC(V_u.sub(2), df.Constant(0.), xboundary, method="pointwise")
-    bc_corners = df.DirichletBC(V, df.Constant((0., 0., 0.)), xboundary, method="pointwise")
+    bc_corners = df.DirichletBC(V_u, df.Constant((0., 0., 0.)), corners, method="pointwise")
     bc_inner = df.DirichletBC(V_u, u_inner, boundaries, 202)
     bcs = [bc_inner, bc_corners]
+
+    # u, p, J = xi.split()
+    # u.vector()[:]=1
+    # bc_corners.apply(u.vector())
+    # f = df.File("U_bc.pvd")
+    # f << u
+    # quit()
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -186,7 +189,6 @@ def solver_call(params):
     u, p, J = xi.split(True)
 
     # Projections
-    F = df.Identity(3) + df.grad(u)
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
 

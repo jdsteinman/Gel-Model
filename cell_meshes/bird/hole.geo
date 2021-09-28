@@ -5,12 +5,12 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface_500.stl";
+Merge "cell_surface_5000.stl";
 
 // Lengths
-length = 200.;
-height = 200.;
-depth = 200.;
+length = 400.;
+height = 400.;
+depth = 400.;
 lcar1 = 0.5;
 
 // Translate {length, height, depth} {Surface{1};}
@@ -61,7 +61,7 @@ Physical Surface(202) = {1};                  // cell surface
 Physical Volume(301) = {26};                  // gel
 
 // Characteristic Length
-// Mesh.CharacteristicLengthFactor = 2.5;
+Mesh.CharacteristicLengthFactor = 1;
 Characteristic Length{PointsOf{Physical Surface{201};}} = 15;
 
 // Generate Mesh

@@ -3,7 +3,6 @@ import pandas as pd
 import pyvtk
 from numpy.linalg import eig
 from scipy.linalg import polar
-# from dolfin import Function as fenicsFunc
 
 """
 Useful functions
@@ -25,36 +24,6 @@ def normalize(a):
 
 def arr_to_tensor(arr):
     return tuple([tuple(map(tuple, A)) for A in arr])
-
-## Coordinate conversions
-def cart2pol(x, y, z):
-    r = np.sqrt(x**2 + y**2)
-    rho = np.sqrt(x**2 + y**2 + z**2)
-    phi = np.arctan2(r, z)
-    theta = np.arctan2(y, x)
-    return(rho, phi, theta)
-
-def pol2cart(rho, phi, theta):
-    x = rho * np.sin(phi) * np.cos(theta)
-    y = rho * np.sin(phi) * np.sin(theta)
-    z = rho * np.cos(phi)
-    return(x, y, z)
-
-## Convert to polar, add r + k, convert back to cartesian
-def add_to_radius(vertices, k):
-    polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
-    polar_vert[:,0] += k
-    cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
-    
-    return cart_vert
-
-## Convert to polar, multiply r*k, convert back to cartesian
-def scale_radius(vertices, k):
-    polar_vert = np.array(cart2pol(vertices[:,0], vertices[:,1], vertices[:,2] ) ).T
-    polar_vert[:,0] *= k
-    cart_vert = np.array(pol2cart(polar_vert[:,0], polar_vert[:,1], polar_vert[:,2] ) ).T
-    
-    return cart_vert
 
 ## Surface Normals
 def get_surface_normals(vert, conn):
@@ -82,7 +51,6 @@ def get_surface_normals(vert, conn):
     n = normalize(n) * -1
 
     return n
-
 ## Returns dot product of displacement vectors with surface outward normal
 def dots(disp, norms):
 
@@ -100,14 +68,18 @@ Point Data
 class PointData:
     def __init__(self, points, conn, u, F, mu=None):
         """
-        Base class to calculate data at points and store in dataframe.
+        Class to export point data to vtk.
+        Usage: 
+            point_data = PointData(points, conn, u, F, mu)
+            point_data.save_to_vtk("out.vtk")
 
         Parameters
         ----------
         points  : array-like, float
-        u       : function
-        F       : function
-        mu      : function
+        conn    : array-like, int
+        u       : array-like, float
+        F       : array-like, float
+        mu      : array-like, float
         """
 
         # Set inputs
@@ -117,7 +89,11 @@ class PointData:
 
         self.u = np.asfarray(u)
         self.F = np.asfarray(F)
-        self.mu = np.asfarray(mu)
+
+        if any(mu):
+            self.mu = np.asfarray(mu)
+        else:
+            self.mu=np.zeros((npoints))
 
         # Preallocate
         self.C = np.zeros((npoints, 3, 3))
@@ -125,9 +101,9 @@ class PointData:
         self.U = np.zeros((npoints, 3, 3))
         self.eigval = np.zeros((npoints, 3))
         self.eigvec = np.zeros((npoints, 3, 3))
-        self.mu = np.zeros((npoints))
+        self.theta = np.zeros((npoints))
         self.df = pd.DataFrame()
-
+    
     # Top level functions
     def save_to_csv(self, fname, sep=","):
 
@@ -145,8 +121,6 @@ class PointData:
         # Deformation
         self._calc_deformation()
 
-        # structure = pyvtk.PolyData(points = self.points, polygons=self.conn)
-
         point_data = pyvtk.PointData(\
             pyvtk.Vectors(self.u, name="u"),
             pyvtk.Tensors(arr_to_tensor(self.F), name="F"),
@@ -155,15 +129,18 @@ class PointData:
             pyvtk.Tensors(arr_to_tensor(self.U), name="U"),
             pyvtk.Vectors(self.eigval, name="w"),
             pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
-            pyvtk.Scalars(self.mu, name="mu")
+            pyvtk.Scalars(self.theta, name="theta")
         )
 
-        # print(arr_to_tensor(self.F))
-        # vtk = pyvtk.VtkData(structure, point_data)
+        cell_data = pyvtk.CellData(\
+            pyvtk.Scalars(self.mu, name="mu")
+            )
+
         vtk = pyvtk.VtkData(\
             pyvtk.UnstructuredGrid(self.points, 
                 tetra=self.conn),
-                point_data)
+                point_data,
+                cell_data)
         vtk.tofile(fname)
 
     #  Low Level Functions
@@ -176,11 +153,15 @@ class PointData:
             self.R[i] = R
             self.U[i] = U
 
+        # Rotation angle
+        tr_R = np.trace(self.R, axis1=1, axis2=2)
+        self.theta = np.arccos((tr_R-1)/2) * 180 / np.pi
+
         # Right Cauchy-Green Tensor
         self.C = np.matmul(self.F.transpose(0,2,1), self.F)
 
         # Eigenvalues/eigenvectors
-        self.eigval, self.eigvec = eig(self.C)
+        self.eigval, self.eigvec = eig(self.U)
 
         # Order by decreasing eigenvalue
         sort_ind = np.argsort(self.eigval, axis=-1)
@@ -190,6 +171,7 @@ class PointData:
 
         for i, v in enumerate(self.eigvec):
             v = v[:, sort_ind[i]]
+            v = normalize(v)
 
     def _assemble_df(self):
         # Clear df
@@ -222,7 +204,7 @@ class PointData:
         # Rotation Tensor      
         columns = ['R11','R12','R13','R21','R22','R23','R31','R32','R33']
         for col, dat in zip(columns, self.R.reshape((-1,9)).T):
-            self.df[col] = dat
+            self.df[col] = dat    
 
         # Stretch Tensor        
         columns = ['U11','U12','U13','U21','U22','U23','U31','U32','U33']
@@ -242,3 +224,6 @@ class PointData:
         columns = ["v11","v12", "v13", "v21", "v22", "v23", "v31", "v32", "v33"]
         for col, dat in zip(columns, self.eigvec.reshape((-1,9), order="F").T):
             self.df[col] = dat
+
+        # Rotation angle
+        self.df["theta"]=self.theta

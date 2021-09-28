@@ -15,14 +15,14 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
 def three_field():
     # Geometry
-    N = 50
-    mesh = df.UnitSquareMesh(N, N)
+    N = 15
+    mesh = df.UnitCubeMesh(N, N, N)
 
     # Subdomains
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
 
-    top = df.AutoSubDomain(lambda x: df.near(x[1], 1))
+    top = df.AutoSubDomain(lambda x: df.near(x[2], 1))
     top.mark(boundaries, 1)
 
     # Measures
@@ -40,7 +40,7 @@ def three_field():
     xi = df.Function(M) 
 
     # set initial values
-    u_0 = df.interpolate(df.Constant((0.0, 0.0)), V.collapse())
+    u_0 = df.interpolate(df.Constant((0.0, 0.0, 0.0)), V.collapse())
     p_0 = df.interpolate(df.Constant((0.0)), W.collapse())
     J_0 = df.interpolate(df.Constant((1.0)), R.collapse())
     df.assign(xi, [u_0, p_0, J_0])
@@ -56,9 +56,9 @@ def three_field():
     c1 = df.Constant(kappa)
     c2 = df.Constant(mu/2)
 
-    g_int = 1e-1
-    B = df.Constant((0., 0.))     # Body force per unit volume
-    T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
+    tf = -1e-1
+    B = df.Constant((0., 0., 0.))     # Body force per unit volume
+    T = df.Expression(("0", "0", "t*g"), t=0, g=tf, degree=0)
 
     # Kinematics
     d = u.geometric_dimension()
@@ -81,9 +81,9 @@ def three_field():
 
     # Boundary Conditions
     def bottom(x, on_boundary):
-        return (on_boundary and df.near(x[1], 0.0))
+        return (on_boundary and df.near(x[2], 0.0))
 
-    bcs = df.DirichletBC(V, df.Constant((0.0, 0.0)), bottom)
+    bcs = df.DirichletBC(V, df.Constant((0.0, 0.0, 0.0)), bottom)
 
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -107,17 +107,8 @@ def three_field():
     print("Total time: ", time.time() - total_start)
     u, p, J = xi.split() 
 
-    # Post-process
-    plot = df.plot(u, mode="displacement")
-    plt.colorbar(plot)
-    plt.show()
-
-    plot2 = df.plot(J)
-    plt.colorbar(plot2)
-    plt.show()
-
     # Outputs
-    output_folder = "output/three_field/"
+    output_folder = "output/3D/three_field/"
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 

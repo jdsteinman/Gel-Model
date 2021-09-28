@@ -1,5 +1,7 @@
 import dolfin as df
+from dolfin import dot, ln, det, grad, tr, Identity
 import matplotlib.pyplot as plt
+import numpy as np
 import time
 import os
 
@@ -13,16 +15,17 @@ df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
 
-def three_field():
+def two_field():
     # Geometry
-    N = 50
-    mesh = df.UnitSquareMesh(N, N)
+    l_x, l_y = 5.0, 5.0  # Domain dimensions
+    n_x, n_y = 20, 120    # Number of elements
+    mesh = df.RectangleMesh(df.Point(0.0,0.0), df.Point(l_x, l_y), n_x, n_y)    
 
     # Subdomains
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
 
-    top = df.AutoSubDomain(lambda x: df.near(x[1], 1))
+    top = df.AutoSubDomain(lambda x: df.near(x[1], 5.0))
     top.mark(boundaries, 1)
 
     # Measures
@@ -30,54 +33,51 @@ def three_field():
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
-    V = df.VectorElement('CG', mesh.ufl_cell(), degree=1)
-    W = df.FiniteElement('DG', mesh.ufl_cell(), degree=0)
-    R = df.FiniteElement('DG', mesh.ufl_cell(), degree=0)   
-    M = df.FunctionSpace(mesh, df.MixedElement([V,W,R]))
-    V, W, R = M.split()
+    V = df.VectorElement('P', mesh.ufl_cell(), 1)
+    S = df.FiniteElement('P', mesh.ufl_cell(), 1)
+    M = df.FunctionSpace(mesh, df.MixedElement([V,S]))
+    V, S = M.split()
 
     # Functions from most recent iteration
-    xi = df.Function(M) 
+    dup = df.TrialFunction(M) 
+    _u, _p = df.TestFunctions(M)
+
+    _u_p = df.Function(M)
+    u, p = df.split(_u_p)
 
     # set initial values
     u_0 = df.interpolate(df.Constant((0.0, 0.0)), V.collapse())
-    p_0 = df.interpolate(df.Constant((0.0)), W.collapse())
-    J_0 = df.interpolate(df.Constant((1.0)), R.collapse())
-    df.assign(xi, [u_0, p_0, J_0])
+    p_0 = df.interpolate(df.Constant((0.0)), S.collapse())
+    df.assign(_u_p, [u_0, p_0])
 
-    # Variational forms
-    u, p, J = df.split(xi)
+    # Paramters
+    E = 1.0e3   # Youngs modulus
+    nu = 0.4999  # Poissons ratio
 
-    # Parameters
-    nu = 0.4999     # Poissons ratio
-    mu = 1
-    lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
-    kappa = lmbda+2*mu/3
-    c1 = df.Constant(kappa)
-    c2 = df.Constant(mu/2)
-
-    g_int = 1e-1
+    g_int = -2.5e2
     B = df.Constant((0., 0.))     # Body force per unit volume
     T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
 
     # Kinematics
-    d = u.geometric_dimension()
-    I = df.Identity(d)             # Identity tensor
-    F = I + df.grad(u)             # Deformation gradient
-    Ju = df.det(F)
-    C = F.T*F                      # Right Cauchy-Green tensor
-    C_bar = C/Ju**(2/d)            # Isochoric decomposition
-    IC_bar = df.tr(C_bar)          # Invariant of isochoric C
+    def pk1Stress(u,pressure,E,nu):
+        G = E/(2*(1+nu))
+        c1 = G/2.0
+        
+        I = df.Identity(V.mesh().geometry().dim())  # Identity tensor
+        F = I + df.grad(u)          # Deformation gradient
+        C = F.T*F                # Right Cauchy-Green tensor
+        Ic = df.tr(C)               # Invariants of deformation tensors
+        J = det(F)
+        pk2 = 2*c1*I-pressure*df.inv(C) # second PK stress
+        return pk2, (J-1)    
 
-    # Stored strain energy density (mixed formulation)
-    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
-
-    # Total potential energy
-    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds(1)
-
-    # Gateaux Derivative
-    res = df.derivative(Pi, xi)
-    Dres = df.derivative(res, xi)
+    pkstrs, hydpress =  pk1Stress(u,p,E,nu)
+    I = df.Identity(M.mesh().geometry().dim())
+    dgF = I + df.grad(u)
+    F1 = df.inner(df.dot(dgF,pkstrs), df.grad(_u))*dx - df.dot(B, _u)*dx - dot(T, _u)*ds
+    F2 = hydpress*_p*dx 
+    F = F1+F2
+    J = df.derivative(F, _u_p,dup)
 
     # Boundary Conditions
     def bottom(x, on_boundary):
@@ -86,18 +86,21 @@ def three_field():
     bcs = df.DirichletBC(V, df.Constant((0.0, 0.0)), bottom)
 
     # Create nonlinear variational problem and solve
-    problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
+    problem = df.NonlinearVariationalProblem(F, _u_p, bcs=bcs, J=J)
     solver = df.NonlinearVariationalSolver(problem)
+    solver.parameters['newton_solver']['relative_tolerance'] = 1E-6
     solver.parameters['newton_solver']['linear_solver'] = 'lu'
-  
-    chunks = 5
+    # solver.parameters['newton_solver']['linear_solver'] = 'minres'
+    # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
+
+    chunks = 50
     total_start = time.time()
     for i in range(chunks):
         iter_start = time.time()
         print("Solver Call: ", i)
         print("----------------")
 
-        # Increment traction force
+        # Increment eigenstrain
         T.t = (i+1)/chunks
 
         ## Solver
@@ -105,19 +108,19 @@ def three_field():
         print("Time: ", time.time() - iter_start)
 
     print("Total time: ", time.time() - total_start)
-    u, p, J = xi.split() 
+    u, p = _u_p.split() 
 
     # Post-process
     plot = df.plot(u, mode="displacement")
     plt.colorbar(plot)
     plt.show()
 
-    plot2 = df.plot(J)
+    plot2 = df.plot(p)
     plt.colorbar(plot2)
     plt.show()
 
     # Outputs
-    output_folder = "output/three_field/"
+    output_folder = "output/two_field/"
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -125,9 +128,9 @@ def three_field():
     u.rename("U","displacement")
     disp_file.write(u)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
-    J.rename("J","Jacobian")
-    J_file.write(J)
+    p_file = df.XDMFFile(output_folder + "p.xdmf")
+    p.rename("p","pressure")
+    p_file.write(p)
 
 if __name__=="__main__":
-    three_field()    
+    two_field()    
