@@ -25,6 +25,7 @@ def main():
     params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
     params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
 
+    params['L'] = 200
     params['mu_ff'] = 100e-6
     params['nu'] = 0.49
 
@@ -110,6 +111,10 @@ def solver_call(params):
     res = df.derivative(Pi, xi, xi_)
     Dres = df.derivative(res, xi, dxi)
 
+    # Subdomains
+    length = params["L"]
+    xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<1 && abs(x[2])<1", R=length/2)
+
     # Boundary Conditions
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
@@ -125,7 +130,9 @@ def solver_call(params):
 
     outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V_u, bf, boundaries, 202)
-    bcs = [outer_bc, inner_bc]
+    bc_x_1 = df.DirichletBC(V_u.sub(1), df.Constant(0), xboundary, method="pointwise")
+    bc_x_2 = df.DirichletBC(V_u.sub(2), df.Constant(0), xboundary, method="pointwise")
+    bcs = [inner_bc, bc_x_1, bc_x_2]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
