@@ -1,9 +1,9 @@
 SetFactory("OpenCASCADE");
 
 // Parameters
-LL = 150;  // Side length of box
-ll = 75;   // Side length of near field
-D  = 25;  // diameter of sphere
+LL = 400;  // Side length of box
+ll = 100;   // Side length of near field
+D  = 50;  // diameter of sphere
 
 // Box
 Box(1) = {-LL/2, -LL/2, -LL/2, LL, LL, LL};
@@ -25,8 +25,8 @@ Physical Surface(203) = {7, 8, 9, 10, 11, 12};
 Physical Surface(201) = {14, 15, 16, 17, 18, 19};
 Physical Surface(202) = {13};
 
-Mesh.CharacteristicLengthFactor = 3;
-Characteristic Length{PointsOf{Physical Surface{202};}} = 0.5;
+Mesh.CharacteristicLengthFactor = 4;
+Characteristic Length{PointsOf{Physical Surface{202};}} = 1;
 Characteristic Length{PointsOf{Physical Surface{203};}} = 2;
 Characteristic Length{PointsOf{Physical Surface{201};}} = 5;
 

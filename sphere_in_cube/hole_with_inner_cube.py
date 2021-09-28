@@ -1,6 +1,6 @@
 import dolfin as df
 from mpi4py import MPI
-from shutil import copyfile 
+from shutil import copyfile
 import numpy as np
 import sys
 import os
@@ -23,17 +23,18 @@ def main():
 
     params = {}
 
-    L=150
-    params['mesh'] = "./meshes/hole_"+str(L)+".xdmf"
-    params['domains'] = "./meshes/hole_"+str(L)+"_domains.xdmf"
-    params['boundaries'] = "./meshes/hole_"+str(L)+"_boundaries.xdmf"
+    params['mesh'] = "./meshes/hole_with_inner_cube.xdmf"
+    params['domains'] = "./meshes/hole_with_inner_cube_domains.xdmf"
+    params['boundaries'] = "./meshes/hole_with_inner_cube_boundaries.xdmf"
+
+    params['L'] = 400
+    params['D'] = 50
 
     params['mu_ff'] = 100e-6
     params['c'] = 1
     params['u_inner'] = -2
-    params['L'] = L
 
-    params['output_folder'] = './output/hole_with_inner_cube/'+str(L)
+    params['output_folder'] = './output/hole_with_inner_cube/'+str(params['c'])
 
     solver_call(params)
 
@@ -50,7 +51,7 @@ class ShearModulus(df.UserExpression):
     def eval_cell(self, value, x, cell):
         if self.mf.array()[cell.index]==302:
             value[0]=self.mu_ff*self.c
-        elif self.mf.array()[cell.index]==301: 
+        elif self.mf.array()[cell.index]==301:
             value[0]=self.mu_ff
         else:
             print("Unknown cell index")
@@ -65,12 +66,12 @@ def solver_call(params):
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["domains"]) as infile:
-        infile.read(mvc, "domains") 
+        infile.read(mvc, "domains")
     domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["boundaries"]) as infile:
-        infile.read(mvc, "boundaries") 
+        infile.read(mvc, "boundaries")
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     # Measures
@@ -81,7 +82,7 @@ def solver_call(params):
     element_u = df.VectorElement("CG", mesh.ufl_cell(), 2)
     element_p = df.FiniteElement("DG", mesh.ufl_cell(), 0)
     element_J = df.FiniteElement("DG", mesh.ufl_cell(), 0)
-  
+
     V = df.FunctionSpace(mesh,df.MixedElement([element_u,element_p,element_J]))
     xi = df.Function(V)
     xi.rename('xi','mixed solution')
@@ -115,7 +116,7 @@ def solver_call(params):
     c = params["c"]
 
     mu = ShearModulus(mu_ff, c, domains)
-    nu = 0.499 
+    nu = 0.499
     kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
 
     c1 = mu/2
@@ -131,24 +132,31 @@ def solver_call(params):
     res = df.derivative(Pi, xi, xi_)
     Dres = df.derivative(res, xi, dxi)
 
+    # Subdomains
+    length = params["L"]
+    xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<1 && abs(x[2])<1", R=length/2)
+    yboundary = df.CompiledSubDomain("abs(x[0])<1 && near(abs(x[1]), R)&& abs(x[2])<1", R=length/2)
+    zboundary = df.CompiledSubDomain("abs(x[0])<1 && abs(x[1])<1 && near(abs(x[2]), R) ", R=length/2)
+    corners = df.CompiledSubDomain("near(abs(x[0]), R) && near(abs(x[1]), R) && near(abs(x[2]), R)", R=length/2)
+
     # Boundary Conditions
+    D = params['D']
     u_mag = params['u_inner']
     u_inner = df.Expression(["x[0]/r*c*t","x[1]/r*c*t","x[2]/r*c*t"], r=12.5, c=u_mag, t=0, degree=1)
     length = params["L"]
 
-    corners = df.CompiledSubDomain("near(abs(x[0]), R) && near(abs(x[1]), R) && near(abs(x[2]), R)", R=length/2)
+    inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
+    fixed_outer = df.DirichletBC(V_u, df.Constant((0.,0.,0.)), boundaries, 201)
+    #corners_bc = df.DirichletBC(V_u, df.Constant((0.,0.,0.)), corners, method="pointwise")
+    bc_x_1 = df.DirichletBC(V_u.sub(1), df.Constant(0), xboundary, method="pointwise")
+    bc_x_2 = df.DirichletBC(V_u.sub(2), df.Constant(0), xboundary, method="pointwise")
+    #bc_y_1 = df.DirichletBC(V_u.sub(0), df.Constant(0), yboundary, method="pointwise")
+    #bc_y_2 = df.DirichletBC(V_u.sub(2), df.Constant(0), yboundary, method="pointwise")
+    #bc_z_1 = df.DirichletBC(V_u.sub(0), df.Constant(0), zboundary, method="pointwise")
+    #bc_z_2 = df.DirichletBC(V_u.sub(1), df.Constant(0), zboundary, method="pointwise")
 
-    # outer_bc = df.DirichletBC(V_u, zero, boundaries, 201)
-    bc_corners = df.DirichletBC(V_u, df.Constant((0., 0., 0.)), corners, method="pointwise")
-    bc_inner = df.DirichletBC(V_u, u_inner, boundaries, 202)
-    bcs = [bc_inner, bc_corners]
-
-    # u, p, J = xi.split()
-    # u.vector()[:]=1
-    # bc_corners.apply(u.vector())
-    # f = df.File("U_bc.pvd")
-    # f << u
-    # quit()
+    bcs = [inner_bc, bc_x_1, bc_x_2]
+    bcs = [inner_bc, fixed_outer]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -168,7 +176,7 @@ def solver_call(params):
     output_folder = params["output_folder"]
     if rank==0:
         if not os.path.exists(output_folder):
-            os.makedirs(output_folder) 
+            os.makedirs(output_folder)
 
     if rank == 0:
         print("Mesh: ", params["mesh"])
@@ -183,14 +191,14 @@ def solver_call(params):
         start = time.time()
         u_inner.t = (i+1)/chunks
         solver.solve()
-        if rank==0: print("Time: ", time.time()-start) 
+        if rank==0: print("Time: ", time.time()-start)
     if rank==0: print("Total Time: ", time.time() - total_start, "s")
 
     u, p, J = xi.split(True)
 
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
-    mu = df.project(mu, df.FunctionSpace(mesh, "DG", 1))
+    mu = df.project(mu, df.FunctionSpace(mesh, "DG", 0))
 
     # Outputs
     mu_file = df.XDMFFile(os.path.join(output_folder, "mu.xdmf"))
@@ -216,11 +224,14 @@ def solver_call(params):
 
     with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
-        f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
+        f.write("No. Elements: {:d}\n".format(int(ele_sum)))
+        f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
         f.write("mu_ff = {:e}\n".format(mu_ff))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("c =     {:f}\n".format(c))
-    
+        f.write("Total Time = {:f}s\n".format(time.time()-total_start))
+
+
     if rank==0: print("Done")
 
 if __name__ == "__main__":
