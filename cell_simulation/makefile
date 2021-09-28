@@ -1,4 +1,4 @@
 run:
-	nohup mpirun -np 4 python3 eigenstrain_parallel.py >> log &
+	nohup mpirun -np 16 python3 parallel.py >> log &
 clean:
 	-rm log
