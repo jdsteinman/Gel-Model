@@ -16,8 +16,6 @@ df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
 df.parameters['krylov_solver']['maximum_iterations'] = 10000
 
-df.set_log_level(40)  # Supress output
-
 def main():
     params = {}
 
@@ -25,15 +23,15 @@ def main():
     params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
     params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
 
-    params['L'] = 200
+    params['L'] = 400
     params['mu_ff'] = 100e-6
     params['nu'] = 0.49
 
-    params['surface_nodes'] = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/bird/CytoD_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/displacements.txt')
+    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_2500_vertices.txt')
+    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_2500_faces.txt', int)
+    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_2500.csv')
 
-    params['output_folder'] = './output/test/mesh_3/'
+    params['output_folder'] = './output/bird/2500/'
 
     solver_call(params)
 
@@ -114,6 +112,8 @@ def solver_call(params):
     # Subdomains
     length = params["L"]
     xboundary = df.CompiledSubDomain("near(abs(x[0]), R) && abs(x[1])<1 && abs(x[2])<1", R=length/2)
+    yboundary = df.CompiledSubDomain("near(abs(x[1]), R) && abs(x[1])<1 && abs(x[2])<1", R=length/2)
+    zboundary = df.CompiledSubDomain("near(abs(x[2]), R) && abs(x[1])<1 && abs(x[2])<1", R=length/2)
 
     # Boundary Conditions
     surface_nodes = params['surface_nodes']
@@ -132,12 +132,17 @@ def solver_call(params):
     inner_bc = df.DirichletBC(V_u, bf, boundaries, 202)
     bc_x_1 = df.DirichletBC(V_u.sub(1), df.Constant(0), xboundary, method="pointwise")
     bc_x_2 = df.DirichletBC(V_u.sub(2), df.Constant(0), xboundary, method="pointwise")
-    bcs = [inner_bc, bc_x_1, bc_x_2]
+    bc_y_1 = df.DirichletBC(V_u.sub(0), df.Constant(0), xboundary, method="pointwise")
+    bc_y_2 = df.DirichletBC(V_u.sub(2), df.Constant(0), xboundary, method="pointwise")
+    bc_z_1 = df.DirichletBC(V_u.sub(0), df.Constant(0), xboundary, method="pointwise")
+    bc_z_2 = df.DirichletBC(V_u.sub(1), df.Constant(0), xboundary, method="pointwise")
+    #bcs = [inner_bc, bc_x_1, bc_x_2, bc_y_1, bc_y_2, bc_z_1, bc_z_2]
+    bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver'] = 'lu'
+    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
 
     # MPI
     comm = MPI.COMM_WORLD
@@ -159,7 +164,7 @@ def solver_call(params):
         print("Solving =========================")
 
     # Solve
-    chunks = 5
+    chunks = 10
     sys.stdout.flush()
     total_start = time.time() 
     for i in range(chunks):
