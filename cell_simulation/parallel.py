@@ -193,19 +193,21 @@ def solver_call(params):
     u_sim = []
     u_data = []
 
-    bbt = mesh.bounding_box_tree()
-    for (init, final) in zip(beads_init, beads_final):
-        if bbt.collides_entity():
-            u_sim.append(u(init))
-            u_data.append(final-init)
-            points.append(init)
+    for point in beads_init:
+        try:
+            uu = u(point)
+        except:
+            uu = -1e16
+        umax = np.array(0.,'d')
+        comm.Reduce(uu, umax, op=MPI.MAX)
+        u_sim.append(umax)
 
-    u_sim = np.array(u_sim)
-    u_data = np.array(u_data)
-    points = np.array(points)
-    nt.write_vtk(output_folder+"bead_displacements", points, u_sim, u_data)
-    nt.write_txt(output_folder+"bead_displacements_sim.txt", points, u_sim)
-    nt.write_txt(output_folder+"bead_displacetxments_data.t", points, u_data)
+    if rank==0: 
+        u_data.beads_final-beads_init
+        points = beads_init
+        nt.write_vtk(output_folder+"bead_displacements", points, u_sim, u_data)
+        nt.write_txt(output_folder+"bead_displacements_sim.txt", points, u_sim)
+        nt.write_txt(output_folder+"bead_displacetxments_data.t", points, u_data)
 
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
