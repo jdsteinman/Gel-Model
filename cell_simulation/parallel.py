@@ -1,5 +1,4 @@
 import dolfin as df
-import mpi4py
 import numpy as np
 import nodal_tools as nt
 import time
@@ -30,6 +29,8 @@ def main():
     params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_2500_vertices.txt')
     params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_2500_faces.txt', int)
     params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_2500.csv')
+    params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
+    params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
 
     params['output_folder'] = './output/bird/2500/'
 
@@ -185,13 +186,26 @@ def solver_call(params):
 
     u, p, J = xi.split(True)
 
-    # # Assemble Solution
-    # if rank==0:
-    #     u_local_vec = u.vector()  # Local solution vector
-    #     u_global_vec = df.Vector(MPI.comm_self, u_local_vec.local_size())
-    #     u_local_vec.gather(u_global_vec, V_u.dofmap.dofs())
+    # Interpolate at bead locations
+    beads_init = params['beads_init']
+    beads_final = params['beads_final']
+    points = []
+    u_sim = []
+    u_data = []
 
-    #     u_global = df.Function(V_u, u_global_vec)
+    bbt = mesh.bounding_box_tree()
+    for (init, final) in zip(beads_init, beads_final):
+        if bbt.collides_entity():
+            u_sim.append(u(init))
+            u_data.append(final-init)
+            points.append(init)
+
+    u_sim = np.array(u_sim)
+    u_data = np.array(u_data)
+    points = np.array(points)
+    nt.write_vtk(output_folder+"bead_displacements", points, u_sim, u_data)
+    nt.write_txt(output_folder+"bead_displacements_sim.txt", points, u_sim)
+    nt.write_txt(output_folder+"bead_displacetxments_data.t", points, u_data)
 
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
@@ -225,7 +239,6 @@ def solver_call(params):
         f.write("mu_ff = {:e}\n".format(mu))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("Total Time = {:f}s\n".format(time.time()-total_start))
-
 
     if rank==0: print("Done")
 
