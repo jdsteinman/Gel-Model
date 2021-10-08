@@ -2,7 +2,7 @@ import h5py
 import os
 import argparse
 import numpy as np
-from post_tools import PointData
+from post_tools import UnstructuredData
 
 def main(folder):
     # Load data
@@ -23,7 +23,7 @@ def main(folder):
     #mu = f['VisualisationVector']['0'][()]
     #mu = np.array(mu)*10**6 # Pa)
 
-    point_data = PointData(x, conn, u, F)
+    point_data = UnstructuredData(x, conn, u, F)
     point_data.save_to_vtk(os.path.join(folder, "sim_output.vtk"))
 
 if __name__=="__main__":

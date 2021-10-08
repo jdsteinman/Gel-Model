@@ -65,7 +65,7 @@ def dots(disp, norms):
 """
 Point Data
 """
-class PointData:
+class UnstructuredData:
     def __init__(self, points, conn, u, F, mu=None):
         """
         Class to export point data to vtk.
@@ -128,8 +128,11 @@ class PointData:
             pyvtk.Tensors(arr_to_tensor(self.C), name="C"),
             pyvtk.Tensors(arr_to_tensor(self.R), name="R"),
             pyvtk.Tensors(arr_to_tensor(self.U), name="U"),
-            pyvtk.Vectors(self.eigval, name="w"),
-            pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
+            pyvtk.Vectors(self.eigval, name="lambda"),
+            pyvtk.Vectors(self.eigvec[:,:,0], name="e1"),
+            pyvtk.Vectors(self.eigvec[:,:,1], name="e2"),
+            pyvtk.Vectors(self.eigvec[:,:,2], name="e3"),
+            # pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
             pyvtk.Scalars(self.theta, name="theta")
         )
 
@@ -139,7 +142,7 @@ class PointData:
 
         vtk = pyvtk.VtkData(\
             pyvtk.UnstructuredGrid(self.points,
-                tetra=self.conn),
+                tetra=self.conn),            # pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
                 point_data,
                 cell_data)
         vtk.tofile(fname)
@@ -228,3 +231,104 @@ class PointData:
 
         # Rotation angle
         self.df["theta"]=self.theta
+
+
+class PointData:
+    def __init__(self, points, u_sim, u_data, F):
+        """
+        Class to export point data to vtk.
+        Usage:
+
+        Parameters
+        ----------
+        points  : array-like, float
+        u       : array-like, float
+        F       : array-like, float
+        """
+
+        # Set inputs
+        self.points = np.array(points, dtype=float)
+        npoints = self.points.shape[0]
+
+        self.u = np.asfarray(u_sim)
+        self.u_data = np.asfarray(u_data)
+        self.F = np.asfarray(F)
+
+        # Preallocate
+        self.res = np.zeros((npoints))
+        self.dots = np.zeros((npoints))
+        self.Ndots = np.zeros((npoints))
+        self.C = np.zeros((npoints, 3, 3))
+        self.R = np.zeros((npoints, 3, 3))
+        self.U = np.zeros((npoints, 3, 3))
+        self.eigval = np.zeros((npoints, 3))
+        self.eigvec = np.zeros((npoints, 3, 3))
+        self.theta = np.zeros((npoints))
+        self.df = pd.DataFrame()
+
+    # Top level functions
+    def save_to_vtk(self, fname):
+
+        # Deformation
+        self._calculate()
+
+        point_data = pyvtk.PointData(\
+            pyvtk.Vectors(self.u, name="u"),
+            pyvtk.Vectors(self.u_data, name="u_data"),
+            pyvtk.Vectors(self.res, name="residuals"),
+            pyvtk.Scalars(self.dots, name="Dot Product"),
+            pyvtk.Scalars(self.Ndots, name="Normalized Dot Product"),
+            pyvtk.Tensors(arr_to_tensor(self.F), name="F"),
+            pyvtk.Tensors(arr_to_tensor(self.C), name="C"),
+            pyvtk.Tensors(arr_to_tensor(self.R), name="R"),
+            pyvtk.Tensors(arr_to_tensor(self.U), name="U"),
+            pyvtk.Vectors(self.eigval, name="lambda"),
+            pyvtk.Vectors(self.eigvec[:,:,0], name="e1"),
+            pyvtk.Vectors(self.eigvec[:,:,1], name="e2"),
+            pyvtk.Vectors(self.eigvec[:,:,2], name="e3"),
+            pyvtk.Scalars(self.theta, name="theta")
+        )
+
+        vtk = pyvtk.VtkData(\
+            pyvtk.PolyData(self.points),
+            point_data)
+
+        vtk.tofile(fname)
+
+    #  Low Level Functions
+    def _calculate(self):
+
+        # Residuals
+        self.res = self.u_data - self.u
+
+        # Dot products
+        self.dots  = np.sum(self.u*self.u_data, axis=1)
+        self.Ndots = np.sum(normalize(self.u)*normalize(self.u_data), axis=1)
+
+        # Polar Decomposition
+        R, U = [], []
+        for i, F in enumerate(self.F):
+            R, U = polar(F)
+            self.R[i] = R
+            self.U[i] = U
+
+        # Rotation angle
+        tr_R = np.trace(self.R, axis1=1, axis2=2)
+        self.theta = np.arccos((tr_R-1)/2) * 180 / np.pi
+
+        # Right Cauchy-Green Tensor
+        self.C = np.matmul(self.F.transpose(0,2,1), self.F)
+
+        # Eigenvalues/eigenvectors
+        self.eigval, self.eigvec = eig(self.U)
+
+        # Order by decreasing eigenvalue
+        sort_ind = np.argsort(self.eigval, axis=-1)
+        sort_ind = np.flip(sort_ind, axis=-1)
+        self.eigval = np.take_along_axis(self.eigval, sort_ind, -1)
+        self.eigval = np.sqrt(self.eigval)
+
+        for i, v in enumerate(self.eigvec):
+            v = v[:, sort_ind[i]]
+            v = normalize(v)
+
