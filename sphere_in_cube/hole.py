@@ -51,7 +51,7 @@ class ElasticModulus(df.UserExpression):
         return()   # Scalar
 
     def eval_cell(self, value, x, cell):
-        if self.mf.array()[cell.index] == self.tag
+        if self.mf.array()[cell.index] == self.tag:
             value[0]=self.delta*self.c
         else:   
             value[0]=self.delta
