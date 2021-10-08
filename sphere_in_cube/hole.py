@@ -59,7 +59,7 @@ class ElasticModulus(df.UserExpression):
 def solver_call(params):
 
     # MPI
-    comm = MPI.COMM_WORLD()
+    comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     if comm.Get_size()>1:
         df.set_log_level(40)  # Mute output
