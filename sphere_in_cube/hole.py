@@ -1,8 +1,10 @@
 import dolfin as df
-import numpy as np
+import numpy as np 
 import sys
 import os
 import time
+from mpi4py import MPI
+
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -21,44 +23,52 @@ def main():
 
     params = {}
 
-    params['mesh'] = "./meshes/hole.xdmf"
-    params['domains'] = "./meshes/hole_domains.xdmf"
-    params['boundaries'] = "./meshes/hole_boundaries.xdmf"
+    params['mesh'] = "./meshes/hole_fgm.xdmf"
+    params['domains'] = "./meshes/hole_fgm_domains.xdmf"
+    params['boundaries'] = "./meshes/hole_fgm_boundaries.xdmf"
 
-    params['mu_ff'] = 100e12
-    params['c'] = 0.1
-    params['near_field'] = 50
+    params['mu'] = 100e-6
+    params['nu'] = 0.499
+    params['c'] = 0.5
 
     params['output_folder'] = './output/hole/C=' + str(params['c']) + '/'
 
     solver_call(params)
 
-class ShearModulus(df.UserExpression):
-    def __init__(self, mu_ff, c, L, *args, **kwargs):
-        self.mu_ff = mu_ff
+class ElasticModulus(df.UserExpression):
+    """
+    Custom Expression for spatially varying elastic modulus, delta
+        - Currently a step function
+    """
+    def __init__(self, delta, c, mf, tag, *args, **kwargs):
+        self.delta = delta
         self.c = c
-        self.L = L
+        self.mf = mf
+        self.tag = tag
         super().__init__(*args, **kwargs)
 
     def value_shape(self):
-        return()
+        return()   # Scalar
 
-    def eval(self, value, x):
-        if abs(x[0])<=self.L/2 and abs(x[1])<=self.L/2 and abs(x[2])<=self.L/2:
-            value[0]=self.mu_ff*self.c
+    def eval_cell(self, value, x, cell):
+        if self.mf.array()[cell.index] == self.tag
+            value[0]=self.delta*self.c
         else:   
-            value[0]=self.mu_ff
+            value[0]=self.delta
 
 def solver_call(params):
+
+    # MPI
+    comm = MPI.COMM_WORLD()
+    rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
+
     # Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
-    # df.plot(mesh)
-    # import matplotlib.pyplot as plt
-    # plt.show()
-    # quit()
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["domains"]) as infile:
         infile.read(mvc, "domains") 
@@ -107,16 +117,17 @@ def solver_call(params):
     IC_bar = df.tr(C_bar)          # Invariant of isochoric C
 
     # Material parameters
-    mu_ff = params["mu_ff"]
+    mu_ff = params["mu"]
+    nu_ff = params["nu"]
     c = params["c"]
-    near_field = params["near_field"]
 
-    mu = ShearModulus(mu_ff, c, near_field)
-    nu = 0.499 
-    kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
+    mu = ElasticModulus(mu_ff, c, domains, 302)
+    nu = ElasticModulus(nu_ff, c, domains, 302)
+    kappa = 2*mu*(1+nu)/3/(1-2*nu)
+    kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
 
     c1 = mu/2
-    c2 = df.Constant(kappa)
+    c2 = kappa
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -129,15 +140,10 @@ def solver_call(params):
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
-    zero = df.Constant((0.0, 0.0, 0.0))
-    u_inner = df.Expression(["x[0]/15*c*t","x[1]/15*c*t","x[2]/15*c*t"], c=, t=0, degree=1)
-
-    xsides = df.CompiledSubDomain("near(abs(x[0]), 75) && abs(x[1])<20 && abs(x[2])<20 && on_boundary")
-
-    outer_bc_y = df.DirichletBC(V_u.sub(1), df.Constant(0.), xsides)
-    outer_bc_z = df.DirichletBC(V_u.sub(2), df.Constant(0.), xsides)
+    u_inner = df.Expression(["x[0]/25*c*t","x[1]/25*c*t","x[2]/25*c*t"], c=2, t=0, degree=1)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
-    bcs = [inner_bc]
+    outer_bc = df.DirichletBC(V_u, df.Constant((0.,0.,0)), boundaries, 201)
+    bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
@@ -148,13 +154,17 @@ def solver_call(params):
     chunks = 5
     total_start = time.time()
     for i in range(chunks):
-        print("\nIteration: ", i)
+        if rank==0: print("\nIteration: ", i)
+
         start = time.time()
         u_inner.t = (i+1)/chunks
         solver.solve()
-        print("Time: ", time.time()-start) 
-    print("Total Time: ", time.time() - total_start, "s")
 
+        if rank==0: print("Time: ", time.time()-start) 
+    if rank==0: 
+        print("Total Time: ", time.time() - total_start, "s")
+
+    # Split solution
     u, p, J = xi.split(True)
 
     # Projections
@@ -164,7 +174,7 @@ def solver_call(params):
 
     # Outputs
     output_folder = params["output_folder"]
-    if not os.path.exists(output_folder):
+    if not os.path.exists(output_folder) and rank==0:
         os.makedirs(output_folder)
 
     mu_file = df.XDMFFile(output_folder + "mu.xdmf")
@@ -185,9 +195,9 @@ def solver_call(params):
 
     with open(output_folder+"log_params", "w+") as f:
         f.write("Mesh: {:s}\n".format(params["mesh"]))
-        f.write("No. Elements: {:d}\n".format(mesh.num_cells()))
-        f.write("mu_ff = {:e}\n".format(mu_ff))
-        f.write("kappa = {:e}\n".format(kappa))
+        f.write("mu =    {:e}\n".format(mu_ff))
+        f.write("nu =    {:e}\n".format(nu_ff))
+        f.write("kappa = {:e}\n".format(kappa_ff))
         f.write("c =     {:f}\n".format(c))
 
 if __name__ == "__main__":
