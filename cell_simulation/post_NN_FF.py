@@ -10,9 +10,6 @@ def main():
     final = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
     u_data = final-init
 
-    # surface nodes
-    surf_vert = np.loadtxt('../cell_data/bird/CytoD_vertices.txt')
-
     # Simulated displacement
     mesh = df.Mesh()
     with df.XDMFFile("output/bird/1000/hole.xdmf") as infile:
@@ -38,7 +35,7 @@ def main():
         except: 
             print(x)
 
-    point_data = PointData(surf_vert, points, u_sim, u_data, F_arr)
+    point_data = PointData(points, u_sim, u_data, F_arr)
     point_data.save_to_vtk("output/bird/1000/bead_data.vtk")
 if __name__=="__main__":
     main()

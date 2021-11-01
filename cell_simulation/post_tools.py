@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.core.arrayprint import dtype_is_implied
 import pandas as pd
 import pyvtk
 from numpy.linalg import eig
@@ -15,9 +16,11 @@ def normalize(a):
 
     if arr.ndim == 1:
         ss = np.sum(arr**2)**0.5
+        ss[ss==0] = 1e10
         arr = arr/ss
     elif arr.ndim == 2:
         ss = np.sum(arr**2, axis=1)**0.5
+        ss[ss==0] = 1e10
         arr = arr / ss[:, np.newaxis]
 
     return arr
@@ -66,7 +69,7 @@ def dots(disp, norms):
 Point Data
 """
 class UnstructuredData:
-    def __init__(self, points, conn, u, F, mu=None):
+    def __init__(self, surface_points, points, conn, u, u_data, F, mu=None):
         """
         Class to export point data to vtk.
         Usage:
@@ -83,12 +86,14 @@ class UnstructuredData:
         """
 
         # Set inputs
+        self.spoints = np.array(surface_points, dtype=float)
         self.points = np.array(points, dtype=float)
         self.conn = np.array(conn, dtype=int)
         npoints = self.points.shape[0]
         ncells = self.conn.shape[0]
 
         self.u = np.asfarray(u)
+        self.u_data = np.asfarray(u_data)
         self.F = np.asfarray(F)
 
         if mu is not None:
@@ -97,6 +102,10 @@ class UnstructuredData:
             self.mu=np.zeros((ncells))
 
         # Preallocate
+        self.r = np.zeros((npoints))
+        self.res = np.zeros((npoints))
+        self.dots = np.zeros((npoints))
+        self.Ndots = np.zeros((npoints))
         self.C = np.zeros((npoints, 3, 3))
         self.R = np.zeros((npoints, 3, 3))
         self.U = np.zeros((npoints, 3, 3))
@@ -109,7 +118,7 @@ class UnstructuredData:
     def save_to_csv(self, fname, sep=","):
 
         # Deformation
-        self._calc_deformation()
+        self._calculate()
 
         # Store Data in df
         self._assemble_df()
@@ -120,10 +129,16 @@ class UnstructuredData:
     def save_to_vtk(self, fname):
 
         # Deformation
-        self._calc_deformation()
+        self._calculate()
 
         point_data = pyvtk.PointData(\
             pyvtk.Vectors(self.u, name="u"),
+            pyvtk.Vectors(self.u, name="u_sim"),
+            pyvtk.Vectors(self.u_data, name="u_data"),
+            pyvtk.Vectors(self.res, name="residuals"),
+            pyvtk.Scalars(self.dots, name="Dot Product"),
+            pyvtk.Scalars(self.Ndots, name="Normalized Dot Product"),
+            pyvtk.Scalars(self.r, name="normal distance"),
             pyvtk.Tensors(arr_to_tensor(self.F), name="F"),
             pyvtk.Tensors(arr_to_tensor(self.C), name="C"),
             pyvtk.Tensors(arr_to_tensor(self.R), name="R"),
@@ -132,7 +147,6 @@ class UnstructuredData:
             pyvtk.Vectors(self.eigvec[:,:,0], name="e1"),
             pyvtk.Vectors(self.eigvec[:,:,1], name="e2"),
             pyvtk.Vectors(self.eigvec[:,:,2], name="e3"),
-            # pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
             pyvtk.Scalars(self.theta, name="theta")
         )
 
@@ -148,7 +162,20 @@ class UnstructuredData:
         vtk.tofile(fname)
 
     #  Low Level Functions
-    def _calc_deformation(self):
+    def _calculate(self):
+
+        # Normal Distance
+        for i, point in enumerate(self.points):
+            r = point - self.spoints
+            r = np.sum(np.abs(r)**2, axis=-1)**(0.5)
+            self.r[i] = np.amin(r)
+
+        # Residuals
+        self.res = self.u_data - self.u
+
+        # Dot products
+        self.dots  = np.sum(self.u*self.u_data, axis=1)
+        self.Ndots = np.sum(normalize(self.u)*normalize(self.u_data), axis=1)
 
         # Polar Decomposition
         R, U = [], []
@@ -176,6 +203,7 @@ class UnstructuredData:
         for i, v in enumerate(self.eigvec):
             v = v[:, sort_ind[i]]
             v = normalize(v)
+
 
     def _assemble_df(self):
         # Clear df
@@ -234,7 +262,7 @@ class UnstructuredData:
 
 
 class PointData:
-    def __init__(self, points, u_sim, u_data, F):
+    def __init__(self, vert, beads, u_sim, u_data, F):
         """
         Class to export point data to vtk.
         Usage:
@@ -247,7 +275,8 @@ class PointData:
         """
 
         # Set inputs
-        self.points = np.array(points, dtype=float)
+        self.vert = np.array(vert, dtype=float)
+        self.points = np.array(beads, dtype=float)
         npoints = self.points.shape[0]
 
         self.u = np.asfarray(u_sim)
@@ -255,7 +284,9 @@ class PointData:
         self.F = np.asfarray(F)
 
         # Preallocate
+        self.r = np.zeros((npoints))
         self.res = np.zeros((npoints))
+        self.perr = np.zeros((npoints))
         self.dots = np.zeros((npoints))
         self.Ndots = np.zeros((npoints))
         self.C = np.zeros((npoints, 3, 3))
@@ -274,8 +305,11 @@ class PointData:
 
         point_data = pyvtk.PointData(\
             pyvtk.Vectors(self.u, name="u"),
+            pyvtk.Vectors(self.u, name="u_sim"),
+            pyvtk.Scalars(self.r, name="normal distance"),
             pyvtk.Vectors(self.u_data, name="u_data"),
             pyvtk.Vectors(self.res, name="residuals"),
+            pyvtk.Vectors(self.perr, name="Percent Error"),
             pyvtk.Scalars(self.dots, name="Dot Product"),
             pyvtk.Scalars(self.Ndots, name="Normalized Dot Product"),
             pyvtk.Tensors(arr_to_tensor(self.F), name="F"),
@@ -298,8 +332,15 @@ class PointData:
     #  Low Level Functions
     def _calculate(self):
 
+        # Normal Distance
+        for i, point in enumerate(self.points):
+            r = point - self.vert
+            r = np.sum(np.abs(r)**2, axis=-1)**(0.5)
+            self.r[i] = np.amin(r)
+
         # Residuals
         self.res = self.u_data - self.u
+        self.perr = np.abs(self.res/self.u_data)*100 
 
         # Dot products
         self.dots  = np.sum(self.u*self.u_data, axis=1)
@@ -331,4 +372,3 @@ class PointData:
         for i, v in enumerate(self.eigvec):
             v = v[:, sort_ind[i]]
             v = normalize(v)
-

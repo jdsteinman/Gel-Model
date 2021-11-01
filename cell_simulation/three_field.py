@@ -26,14 +26,13 @@ def main():
     params['mu_ff'] = 100e-6
     params['nu'] = 0.49
 
-    params['u_init'] = "./output/bird/single_field/u_out.xdmf"
-    params['mesh_init'] = "../cell_meshes/bird/hole_coarse.xdmf"
-
     params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
     params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
     params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
     params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
     params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
+
+    params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
 
     params['output_folder'] = './output/bird/three_field'
 
@@ -81,26 +80,18 @@ def solver_call(params):
     V_p = V.sub(1)
     V_J = V.sub(2)
    
-    mesh_init = df.Mesh()
-    with df.XDMFFile(params["mesh_init"]) as infile:
-        infile.read(mesh_init)
- 
-    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
-    u_init = df.Function(V_init)
-    
-    init_file = df.XDMFFile(params["u_init"])
-    init_file.read_checkpoint(u_init, "u", 0)
-
-    #u_init = nt.InitFunction(surface_nodes, displacements, 10)
-    #u_init = df.Expression(["x[0]/L", "x[1]/L", "x[2]/L"], L=L, degree=1)
-    u_init.set_allow_extrapolation(True)
-    u_0 = df.interpolate(u_init, V_u.collapse())
-    
+    u_0 = df.interpolate(df.Constant(0.0,0.0,0.0), V_u.collapse())
     p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
     J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
 
     df.assign(xi,[u_0,p_0,J_0])
     u,p,J = df.split(xi)
+
+    # Res
+    res = params["res"]
+    normal_distance = res[:,0]
+    discrepancy = np.sum(res[1:4]**2, axis=1)**0.5
+    d = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy))
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
