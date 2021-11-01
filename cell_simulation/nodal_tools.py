@@ -49,6 +49,31 @@ class shear_modulus(df.UserExpression):
     def value_shape(self):
         return ()
 
+class InitFunction(df.UserExpression):
+    def __init__ (self, surface_vert, surface_disp, rmax, **kwargs):
+        super().__init__(**kwargs)
+        self.vert = np.asarray(surface_vert, dtype="float64")  # surface vertices
+        self.u = surface_disp
+        self.rmax = rmax
+
+    def eval(self, value, x):
+        xx = np.array([x[0], x[1], x[2]], dtype="float64")
+
+        # Distance to surface
+        r = xx - self.vert
+        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
+        i = np.argmin(r)
+        r = np.amin(r)
+
+        if r < self.rmax:
+            #value[0], value[1], value[2] = self.u[i]*(1-r/self.rmax)**2
+            value[0], value[1], value[2] = 0.25*self.u[i]*(1-r/self.rmax)
+        else:
+            value[0] = value[1] = value[2] = 0.0 
+
+    def value_shape(self):
+        return (3,)
+
 def get_midpoints(nodes, faces):
     _faces = faces.astype(int)
     midpoints = np.zeros((_faces.shape[0], 3))
