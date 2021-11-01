@@ -1,7 +1,7 @@
 SetFactory("OpenCASCADE");
 
 // Parameters
-LL = 400;  // Side length of box
+LL = 300;  // Side length of box
 ll = 100;   // Side length of near field
 D  = 50;  // diameter of sphere
 

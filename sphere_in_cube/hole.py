@@ -31,7 +31,7 @@ def main():
     params['nu'] = 0.499
     params['c'] = 0.5
 
-    params['output_folder'] = './output/hole/C=' + str(params['c']) + '/'
+    params['output_folder'] = './output/hole/d_psi'
 
     solver_call(params)
 
@@ -40,8 +40,8 @@ class ElasticModulus(df.UserExpression):
     Custom Expression for spatially varying elastic modulus, delta
         - Currently a step function
     """
-    def __init__(self, delta, c, mf, tag, *args, **kwargs):
-        self.delta = delta
+    def __init__(self, lmbda, c, mf, tag, *args, **kwargs):
+        self.lmbda = lmbda
         self.c = c
         self.mf = mf
         self.tag = tag
@@ -52,9 +52,9 @@ class ElasticModulus(df.UserExpression):
 
     def eval_cell(self, value, x, cell):
         if self.mf.array()[cell.index] == self.tag:
-            value[0]=self.delta*self.c
+            value[0]=self.lmbda*self.c
         else:   
-            value[0]=self.delta
+            value[0]=self.lmbda
 
 def solver_call(params):
 
@@ -122,9 +122,9 @@ def solver_call(params):
     c = params["c"]
 
     mu = ElasticModulus(mu_ff, c, domains, 302)
-    nu = ElasticModulus(nu_ff, c, domains, 302)
-    kappa = 2*mu*(1+nu)/3/(1-2*nu)
+    #nu = ElasticModulus(nu_ff, c, domains, 302)
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
+    kappa = ElasticModulus(kappa_ff, c, domains, 302)
 
     c1 = mu/2
     c2 = kappa
@@ -148,7 +148,7 @@ def solver_call(params):
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver'] = 'lu'
+    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
 
     # Solve
     chunks = 5
