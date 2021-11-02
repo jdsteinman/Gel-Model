@@ -122,7 +122,7 @@ def solver_call(params):
     # Total potential energy
     Pi = psi*dx(301) - df.dot(B, u)*dx - df.dot(T, u)*ds
 
-    # Compute first variation of Pi (directional derivative about u in the direction of w)
+    # Compute first variation of Pi 
     res = df.derivative(Pi, xi, xi_)
     Dres = df.derivative(res, xi, dxi)
 
@@ -174,6 +174,7 @@ def solver_call(params):
             print("Time: ", time.time()-start)
             print("Iteration: ", i)
 
+        # Increment
         bf.scalar = (i+1)/chunks
         solver.solve()
 
