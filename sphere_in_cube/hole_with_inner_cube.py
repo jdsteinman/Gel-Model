@@ -115,7 +115,7 @@ def solver_call(params):
     mu_ff = params["mu_ff"]
     c = params["c"]
 
-    mu = ShearModulus(mu_ff, c, domains)
+    mu = ElasticModulus(mu_ff, c, domains)
     nu = 0.499
     kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
 

@@ -5,7 +5,6 @@ import os
 import time
 from mpi4py import MPI
 
-
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
@@ -29,9 +28,9 @@ def main():
 
     params['mu'] = 100e-6
     params['nu'] = 0.499
-    params['c'] = 0.5
+    params['c'] = 1
 
-    params['output_folder'] = './output/hole/d_psi'
+    params['output_folder'] = './output/hole/psi_degredation/'
 
     solver_call(params)
 
@@ -122,12 +121,12 @@ def solver_call(params):
     c = params["c"]
 
     mu = ElasticModulus(mu_ff, c, domains, 302)
-    #nu = ElasticModulus(nu_ff, c, domains, 302)
+    nu = ElasticModulus(nu_ff, c, domains, 302)
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
-    kappa = ElasticModulus(kappa_ff, c, domains, 302)
+    kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
     c1 = mu/2
-    c2 = kappa
+    c2 = kappa_ff
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -140,7 +139,7 @@ def solver_call(params):
     Dres = df.derivative(res, xi, dxi)
 
     # Boundary Conditions
-    u_inner = df.Expression(["x[0]/25*c*t","x[1]/25*c*t","x[2]/25*c*t"], c=2, t=0, degree=1)
+    u_inner = df.Expression(["x[0]/25*c*t","x[1]/25*c*t","x[2]/25*c*t"], c=0.1, t=0, degree=1)
     inner_bc = df.DirichletBC(V_u, u_inner, boundaries, 202)
     outer_bc = df.DirichletBC(V_u, df.Constant((0.,0.,0)), boundaries, 201)
     bcs = [inner_bc, outer_bc]
