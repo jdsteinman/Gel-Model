@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import time
 import os
 
+from ufl.operators import ln
+
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
@@ -14,7 +16,7 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
 def single_field():
     # Geometry
-    N = 50
+    N = 25
     mesh = df.UnitSquareMesh(N, N)
 
     # Subdomains
@@ -41,6 +43,9 @@ def single_field():
     mu = 1
     lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
     kappa = lmbda+2*mu/3
+    print("mu: ", mu)
+    print("lambda: ", lmbda)
+    print("kappa: ",kappa)
 
     # Forces
     g_int = -1e-1                # load
@@ -52,13 +57,16 @@ def single_field():
     I = df.Identity(d)             # Identity tensor
     F = I + df.grad(u)             # Deformation gradient
     C = F.T*F                   # Right Cauchy-Green tensor
+    J  = df.det(F)
 
     # Invariants of deformation tensors
     Ic = df.tr(C)
-    J  = df.det(F)
+    Ic_bar = Ic/J**(-2/d)
 
     # Stored strain energy density (compressible neo-Hookean model)
     psi = (mu/2)*(Ic - 2) - mu*df.ln(J) + (lmbda/2)*(df.ln(J))**2
+    psi = (mu/2)*(Ic - 2) - mu*df.ln(J) + (kappa/2)*(J-1)**2
+    psi = (mu/2)*(Ic_bar - 2) + (kappa/4)*(J**2-1-2*df.ln(J))
 
     # Total potential energy
     Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds(1)

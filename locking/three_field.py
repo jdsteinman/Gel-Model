@@ -7,15 +7,15 @@ df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
 df.parameters['form_compiler']['cpp_optimize'] = False
-df.parameters['form_compiler']['quadrature_degree'] = 3
+df.parameters['form_compiler']['quadrature_degree'] = 4
 df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
-df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
+df.parameters['krylov_solver']['relative_tolerance'] = 1E-8
 df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
 
 def three_field():
     # Geometry
-    N = 50
+    N = 25
     mesh = df.UnitSquareMesh(N, N)
 
     # Subdomains
@@ -49,14 +49,15 @@ def three_field():
     u, p, J = df.split(xi)
 
     # Parameters
-    nu = 0.4999     # Poissons ratio
+    nu = 0.499    # Poissons ratio
+    # nu=0.3
     mu = 1
     lmbda = 2*nu*mu/(1-2*nu)       # 1st Lame Parameter
     kappa = lmbda+2*mu/3
     c1 = df.Constant(kappa)
     c2 = df.Constant(mu/2)
 
-    g_int = 1e-1
+    g_int = -1e-1
     B = df.Constant((0., 0.))     # Body force per unit volume
     T = df.Expression(("0", "t*g"), t=0, g=g_int, degree=0)
 
