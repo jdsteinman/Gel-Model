@@ -92,12 +92,12 @@ def solver_call(params):
     u_ = df.TestFunction(V)
     du = df.TrialFunction(V)
 
-
     # Initialize  
     V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
     u_init = df.Function(V_init)  
     u_init_file = df.XDMFFile(params["u_init"])
     u_init_file.read_checkpoint(u_init, "u", 0)
+    u_init.set_allow_extrapolation(True)
 
     u_0 = df.interpolate(u_init, V)
     # u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
