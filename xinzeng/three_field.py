@@ -38,6 +38,12 @@ def main():
 
 def solver_call(params):
 
+    # MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
+
     # Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
@@ -91,6 +97,19 @@ def solver_call(params):
     u_0 = df.interpolate(u_init, V_u.collapse())
     p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
     J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
+
+    output_folder = params["output_folder"]
+    if rank==0:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
+    disp_file = df.XDMFFile(os.path.join(output_folder, "U_init.xdmf"))
+    u_init.rename("u_init","original displacement")
+    disp_file.write(u_init)
+
+    disp_file = df.XDMFFile(os.path.join(output_folder, "U_init_interpolated.xdmf"))
+    u_init.rename("u_interpolated","interpolated displacement")
+    disp_file.write(u_init)
 
     df.assign(xi,[u_0,p_0,J_0])
     u,p,J = df.split(xi)
@@ -146,11 +165,6 @@ def solver_call(params):
     solver.parameters['newton_solver']['preconditioner'] = 'hypre_amg'
 
     # MPI
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    if comm.Get_size()>1:
-        df.set_log_level(40)  # Mute output
-
     ele = np.array(len(mesh.cells()),'d') # Number of elements
     ele_sum = np.array(0.,'d')
     comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
@@ -195,19 +209,19 @@ def solver_call(params):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-    disp_file = df.XDMFFile(output_folder + "U.xdmf")
+    disp_file = df.XDMFFile(os.path.join(output_folder, "u.xdmf"))
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = df.XDMFFile(output_folder + "F.xdmf")
+    F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
     F.rename("F","deformation gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
+    J_file = df.XDMFFile(os.path.join(output_folder, "J.xdmf"))
     J.rename("J","Jacobian")
     J_file.write(J)
 
-    p_file = df.XDMFFile(output_folder + "p.xdmf")
+    p_file = df.XDMFFile(os.path.join(output_folder, "p.xdmf"))
     p.rename("p","pressure")
     p_file.write(p)
 
