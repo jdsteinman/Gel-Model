@@ -18,25 +18,30 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def main():
     params = {}
 
-    params['mesh'] = "../cell_meshes/bird/hole.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
+    params['mesh'] = "../cell_meshes/bird/hole_coarse.xdmf"
+    params['domains'] = "../cell_meshes/bird/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_meshes/bird/hole_coarse_boundaries.xdmf"
 
-    params['L'] = 250
     params['mu_ff'] = 100e-6
     params['nu'] = 0.49
 
-    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_1000_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_1000_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_1000.csv')
-    params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
-    params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
+    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
+    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
+    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
+    params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
 
-    params['output_folder'] = './output/bird/single_field/fixed'
+#    params['output_folder'] = './output/single_field/coarse/homogeneous'
+    params['output_folder'] = './output/single_field/coarse/FGM-mu'
+#    params['output_folder'] = './output/single_field/coarse/FGM-psi'
 
     solver_call(params)
 
 def solver_call(params):
+    # MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if comm.Get_size()>1:
+        df.set_log_level(40)  # Mute output
 
     # Mesh
     mesh = df.Mesh()
@@ -53,10 +58,17 @@ def solver_call(params):
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
+    # AVIC Surface
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
     displacements = params['displacements']
-    L = params["L"]
+
+    # Res
+    res = params["res"]
+    normal_distance = res[:,3]
+    discrepancy = np.sum(res[:,0:3]**2, axis=1)**0.5
+    D = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy)) * 0.5 
+    D2 = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy)) * 0.1   
 
     # Measures
     dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
@@ -72,7 +84,7 @@ def solver_call(params):
     du = df.TrialFunction(V)
 
     # Set initial values
-    u_0 = df.interpolate(df.Constant((0.0, 0.0,0.0)), V)
+    u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
     df.assign(u, u_0)
 
     # Kinematics
@@ -89,14 +101,18 @@ def solver_call(params):
     IC_bar = df.tr(C_bar)
 
     # Material parameters
-    mu = params["mu_ff"]
-    nu = params["nu"]
+    mu_ff = params["mu_ff"]
+    nu_ff = params["nu"]
+    kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
+    
+    mu = nt.ElasticModulus(mu_ff, surface_nodes, normal_distance, D)
+    nu = nt.ElasticModulus(nu_ff, surface_nodes, normal_distance, D2) 
     kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
-    c1 = df.Constant(mu/2)
-    c2 = df.Constant(kappa)
+    c1 = mu/2
+    c2 = kappa_ff
 
-    # Stored strain energy density (mixed formulation)
+    # Stored strain energy density (Neo-Hookean formulation)
     psi = c1*(IC_bar-d) + c2*(Ju**2-1-2*df.ln(Ju))/4 
 
     # Total potential energy
@@ -105,16 +121,6 @@ def solver_call(params):
     # Compute first variation of Pi (directional derivative about u in the direction of w)
     res = df.derivative(Pi, u, u_)
     Dres = df.derivative(res, u, du)
-
-    # Subdomains
-    length = params["L"]
-    centroid = [72.20045715, 72.90093189, 47.46392168]
-    cx, cy, cz = centroid
-
-    xboundary = df.CompiledSubDomain("near(abs(x[0]-cx), R, 1) && near(abs(x[1]-cy), 0, 1) && near(abs(x[2]-cz), 0, 1)", R=length/2, cx=cx, cy=cy, cz=cz)
-    yboundary = df.CompiledSubDomain("near(abs(x[0]-cx), 0, 1) && near(abs(x[1]-cy), R, 1) && near(abs(x[2]-cz), 0, 1)", R=length/2, cx=cx, cy=cy, cz=cz)
-    zboundary = df.CompiledSubDomain("near(abs(x[0]-cx), 0, 1) && near(abs(x[1]-cy), 0, 1) && near(abs(x[2]-cz), R, 1)", R=length/2, cx=cx, cy=cy, cz=cz)
-    corners   = df.CompiledSubDomain("near(abs(x[0]-cx), R, 1) && near(abs(x[1]-cy), R, 1) && near(abs(x[2]-cz), R, 1)", R=length/2, cx=cx, cy=cy, cz=cz)
 
     # Boundary Conditions
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
@@ -127,16 +133,7 @@ def solver_call(params):
 
     outer_bc = df.DirichletBC(V, zero, boundaries, 201)
     inner_bc = df.DirichletBC(V, bf, boundaries, 202)
-    corners_bc =  df.DirichletBC(V, zero, corners, method="pointwise")
-    bc_x_1 = df.DirichletBC(V.sub(1), df.Constant(0), xboundary, method="pointwise")
-    bc_x_2 = df.DirichletBC(V.sub(2), df.Constant(0), xboundary, method="pointwise")
-    bc_y_1 = df.DirichletBC(V.sub(0), df.Constant(0), yboundary, method="pointwise")
-    bc_y_2 = df.DirichletBC(V.sub(2), df.Constant(0), yboundary, method="pointwise")
-    bc_z_1 = df.DirichletBC(V.sub(0), df.Constant(0), zboundary, method="pointwise")
-    bc_z_2 = df.DirichletBC(V.sub(1), df.Constant(0), zboundary, method="pointwise")
-    #bcs = [inner_bc, bc_x_1, bc_x_2, bc_y_1, bc_y_2, bc_z_1, bc_z_2]
     bcs = [inner_bc, outer_bc]
-    #bcs = [inner_bc, corners_bc]
 
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
@@ -144,11 +141,6 @@ def solver_call(params):
     solver.parameters['newton_solver']['linear_solver']  = 'mumps'
 
     # MPI
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    if comm.Get_size()>1:
-        df.set_log_level(40)  # Mute output
-
     ele = np.array(len(mesh.cells()),'d') # Number of elements
     ele_sum = np.array(0.,'d')
     comm.Reduce(ele, ele_sum, op=MPI.SUM, root=0)
@@ -163,28 +155,26 @@ def solver_call(params):
         print("Solving =========================")
 
     # Solve
-    chunks = 5
+    chunks = 10
     sys.stdout.flush()
     total_start = time.time() 
     for i in range(chunks):
         start = time.time()
-        if rank==0:    
-            print("Time: ", time.time()-start)
-            print("Iteration: ", i)
+        if rank == 0: print("    Iter: ", i)
+        sys.stdout.flush()  
 
         bf.scalar = (i+1)/chunks
         solver.solve()
 
         end = time.time()
         time_elapsed = end - start
-        if rank == 0:
-            print("    Iter: ", i)
-            print('    Time elapsed = {:2.1f}s'.format(time_elapsed))
+        if rank == 0: print('    Time elapsed = {:2.1f}s'.format(time_elapsed))
         sys.stdout.flush()  
 
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     J = df.project(Ju, V=df.FunctionSpace(mesh, "DG", 0))
+    mu = df.project(mu, V=df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]
@@ -204,6 +194,10 @@ def solver_call(params):
     J.rename("J","Jacobian")
     J_file.write(J)
 
+    mu_file = df.XDMFFile(os.path.join(output_folder, "mu.xdmf"))
+    mu.rename("mu","shear modulus")
+    mu_file.write(mu)
+
     out_file = df.XDMFFile((os.path.join(output_folder, "u_out.xdmf")))
     out_file.write_checkpoint(u, "u", 0)   #Not appending
 
@@ -211,8 +205,8 @@ def solver_call(params):
         f.write("Mesh: {:s}\n".format(params["mesh"]))
         f.write("No. Elements: {:d}\n".format(int(ele_sum)))
         f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
-        f.write("mu_ff = {:e}\n".format(mu))
-        f.write("kappa = {:e}\n".format(kappa))
+        f.write("mu_ff = {:e}\n".format(mu_ff))
+        f.write("nu_ff = {:e}\n".format(nu_ff))
         f.write("Total Time = {:f}s\n".format(time.time()-total_start))
 
     if rank==0: print("Done")

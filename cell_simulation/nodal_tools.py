@@ -20,10 +20,10 @@ class BoundaryFunc(df.UserExpression):
             value[0], value[1], value[2] = (0, 0, 0)
 
 class ElasticModulus(df.UserExpression):
-    def __init__ (self, vert, lmbda, train_r, train_d, **kwargs):
+    def __init__ (self, lmbda, vert, train_r, train_d, **kwargs):
         super().__init__(**kwargs)
+        self.lmbda = lmbda        # modulus 
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices
-        self.lmbda = lmbda        # Shear modulus 
         self.rmax = np.max(train_r)    # Max distance from surface
         self.f = interp1d(train_r, train_d)
 
@@ -39,7 +39,7 @@ class ElasticModulus(df.UserExpression):
             d = self.f(r)
             value[0] = self.lmbda*(1-d)
         else:
-            value[0] =  self.lmbda*1.01 
+            value[0] =  self.lmbda 
 
     def value_shape(self):
         return ()

@@ -95,12 +95,23 @@ def solver_call(params):
     #u_init = df.Expression(["x[0]/L", "x[1]/L", "x[2]/L"], L=L, degree=1)
     u_init.set_allow_extrapolation(True)
     u_0 = df.interpolate(u_init, V_u.collapse())
-    
+   
+    output_folder = params["output_folder"]
+    if rank==0:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
+    disp_file = df.XDMFFile(output_folder + "U_init_interpolated.xdmf")
+    u.rename("U","interpolated displacement")
+    disp_file.write(u)
+
     p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
     J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
 
     df.assign(xi,[u_0,p_0,J_0])
     u,p,J = df.split(xi)
+
+    quit()
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
