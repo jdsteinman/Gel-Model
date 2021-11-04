@@ -28,6 +28,10 @@ def main():
     params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
     params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
     params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
+
+    params['mesh_init'] = "../cell_meshes/bird/hole_coarse.xdmf"
+    params['u_init'] = "./output/single_field/coarse/homogeneous/u_out.xdmf"
+
     params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
 
 #    params['output_folder'] = './output/single_field/coarse/homogeneous'
@@ -43,7 +47,7 @@ def solver_call(params):
     if comm.Get_size()>1:
         df.set_log_level(40)  # Mute output
 
-    # Mesh
+    # Gel Volume Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
@@ -58,12 +62,17 @@ def solver_call(params):
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
+    # Initialization Mesh
+    mesh_init = df.Mesh()
+    with df.XDMFFile(params["mesh_init"]) as infile:
+        infile.read(mesh_init)
+
     # AVIC Surface
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
     displacements = params['displacements']
 
-    # Res
+    # Residuals
     res = params["res"]
     normal_distance = res[:,3]
     discrepancy = np.sum(res[:,0:3]**2, axis=1)**0.5
@@ -83,8 +92,15 @@ def solver_call(params):
     u_ = df.TestFunction(V)
     du = df.TrialFunction(V)
 
-    # Set initial values
-    u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
+
+    # Initialize  
+    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    u_init = df.Function(V_init)  
+    u_init_file = df.XDMFFile(params["u_init"])
+    u_init_file.read_checkpoint(u_init, "u", 0)
+
+    u_0 = df.interpolate(u_init, V)
+    # u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
     df.assign(u, u_0)
 
     # Kinematics
@@ -138,7 +154,8 @@ def solver_call(params):
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver']  = 'mumps'
+    solver.parameters['newton_solver']['linear_solver']  = 'gmres'
+    solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
 
     # MPI
     ele = np.array(len(mesh.cells()),'d') # Number of elements
