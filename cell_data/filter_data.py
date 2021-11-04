@@ -21,7 +21,7 @@ def neighbors(points, U_beads, NN):
         avg_dot = np.mean(dots)
 
         # Threshold
-        if avg_dot > 0.7:
+        if avg_dot > 0.8:
             points_.append(xyz.ravel())
             U_beads_.append(U_beads[i,:])
 

@@ -14,11 +14,11 @@ def main():
     params = {}
 
     params["nu"] = 0.49
-    params["mu_ff"] = 100e3
-    params["d"] = 0.5
+    params["mu"] = 100e3
+    params["degradation"] = 0.5
     params["stretch"] = 1.05
 
-    params["output_folder"] = "output/random/"
+    params["output_folder"] = "output/single_field/mu"
 
     solver(params)
 
@@ -33,25 +33,13 @@ def solver(params):
 
     # Function Space
     element_u = df.VectorElement("CG",mesh.ufl_cell(),2)
-    element_p = df.FiniteElement("DG",mesh.ufl_cell(),0)
-    element_J = df.FiniteElement("DG",mesh.ufl_cell(),0)
-  
-    V = df.FunctionSpace(mesh,df.MixedElement([element_u,element_p,element_J]))
-    xi = df.Function(V)
-    xi.rename('xi','mixed solution')
-    xi_ = df.TestFunction(V)
-    dxi = df.TrialFunction(V)
+    V = df.FunctionSpace(mesh, element_u)
+    u = df.Function(V)
+    u.rename('u','displacement')
 
     # Set initial values
-    V_u = V.sub(0)
-    V_p = V.sub(1)
-    V_J = V.sub(2)
-    u_0 = df.interpolate(df.Constant((0.0, 0.0, 0.0)), V_u.collapse())
-    p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
-    J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
-
-    df.assign(xi,[u_0,p_0,J_0])
-    u,p,J = df.split(xi)
+    u_0 = df.interpolate(df.Constant((0.0, 0.0, 0.0)), V)
+    df.assign(u, u_0)
     
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
@@ -59,38 +47,34 @@ def solver(params):
     d = u.geometric_dimension()
     I = df.Identity(d)             # Identity tensor
     F = I + df.grad(u)             # Deformation gradient
-    Ju = df.det(F)
+    J = df.det(F)
     C = F.T*F                      # Right Cauchy-Green tensor
-    C_bar = C/Ju**(2/d)            # Isochoric decomposition
+    C_bar = C/J**(2/d)            # Isochoric decomposition
 
     # Invariants of deformation tensors
     IC_bar = df.tr(C_bar)
 
     # Material parameters
-    nu = params["nu"]
-    mu_ff = params["mu_ff"]
-    d = params["d"]
-    mu = df.Expression("x[0]<5 ? mu_ff : d*mu_ff", mu_ff=mu_ff, d=d, degree=1)
+    nu_ff = params["nu"]
+    mu_ff = params["mu"]
+    D = params["degradation"]
+    mu = df.Expression("x[0]<5 ? mu : D*mu", mu=mu_ff, D=D, degree=1)
+    nu = df.Expression("x[0]<5 ? nu : D*nu", nu=nu_ff, D=D, degree=1)
     kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
-
-    # DG = df.FunctionSpace(mesh, "DG", 0)
-    # mu = df.Function(DG)
-    # mu.vector()[:] = np.random.uniform(50,150, mesh.num_cells())
-
-    kappa = 2*mu_ff*(1+nu)/3/(1-2*nu)
+    kappa = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
 
     c1 = mu/2
-    c2 = df.Constant(kappa)
+    c2 = kappa
 
     # Stored strain energy density (mixed formulation)
-    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
+    psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 
 
     # Total potential energy
     Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
-    res = df.derivative(Pi, xi, xi_)
-    Dres = df.derivative(res, xi, dxi)
+    res = df.derivative(Pi, u)
+    Dres = df.derivative(res, u)
 
     # Boundary Conditions
     left   = df.CompiledSubDomain("near(x[0], side) && on_boundary", side = 0.0)
@@ -101,25 +85,22 @@ def solver(params):
     # Solve for analytical Jacobian
     stretch = params["stretch"]
     u_right = L*(stretch-1)
-    # u_sides = W*(1/np.sqrt(stretch)-1)
 
-    bc_left   = df.DirichletBC(V_u.sub(0), df.Constant(0.0), left)
-    bc_right  = df.DirichletBC(V_u.sub(0), df.Constant(u_right), right)
-    bc_top_bottom  = df.DirichletBC(V_u.sub(2), df.Constant(0), top_bottom, method="pointwise")
-    bc_front_back  = df.DirichletBC(V_u.sub(1), df.Constant(0), front_back, method="pointwise")
+    bc_left   = df.DirichletBC(V.sub(0), df.Constant(0.0), left)
+    bc_right  = df.DirichletBC(V.sub(0), df.Constant(u_right), right)
+    bc_top_bottom  = df.DirichletBC(V.sub(2), df.Constant(0), top_bottom, method="pointwise")
+    bc_front_back  = df.DirichletBC(V.sub(1), df.Constant(0), front_back, method="pointwise")
     bcs = [bc_left, bc_right, bc_top_bottom, bc_front_back]
 
     # Create nonlinear variational problem
-    problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
+    problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver'] = 'lu'
     solver.solve()
-   
-    u, p, J = xi.split(True)
 
     # Projections
-    F = df.Identity(3) + df.grad(u)
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
+    J = df.project(J, df.FunctionSpace(mesh, "DG", 0))
     mu = df.project(mu, df.FunctionSpace(mesh, "DG", 0))
 
     # Outputs
@@ -127,23 +108,23 @@ def solver(params):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    linedata = tools.LineData(u, F, mu, point=[0,0,0], direction=[1,0,0], bound=10, step=0.1)
-    linedata.save_to_csv(output_folder+"x_axis.csv")
-    linedata.save_to_vtk(output_folder+"x_axis")
+    # linedata = tools.LineData(u, F, mu, point=[0,0,0], direction=[1,0,0], bound=10, step=0.1)
+    # linedata.save_to_csv(output_folder+"x_axis.csv")
+    # linedata.save_to_vtk(output_folder+"x_axis")
 
-    mu_file = df.XDMFFile(output_folder + "mu.xdmf")
+    mu_file = df.XDMFFile(os.path.join(output_folder, "mu.xdmf"))
     mu.rename("mu", "Shear Modulus")
     mu_file.write(mu)
 
-    disp_file = df.XDMFFile(output_folder + "U.xdmf")
+    disp_file = df.XDMFFile(os.path.join(output_folder, "U.xdmf"))
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = df.XDMFFile(output_folder + "F.xdmf")
+    F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
     F.rename("F","deformation gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(output_folder + "J.xdmf")
+    J_file = df.XDMFFile(os.path.join(output_folder, "J.xdmf"))
     J.rename("J","Jacobian")
     J_file.write(J)
 
