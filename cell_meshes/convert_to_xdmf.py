@@ -31,21 +31,25 @@ def main():
 
                 # Separate meshes
                 try:
+                    print("\tWriting mesh")
                     meshio.write(output_filename + ".xdmf", meshio.Mesh(points=points, cells={"tetra": tetra_cells}))
+                    print("\tWriting domains")
                     meshio.write(output_filename + "_domains.xdmf", meshio.Mesh(points=points, 
                                 cells={"tetra": tetra_cells},
                                 cell_data={"domains":[tetra_data]}))
-                except:
-                    print("Unable to convert", output_filename)
+                except Exception as e: 
+                    print("\t", e)
+                    quit()
 
                 try:
+                    print("\tWriting boundaries")
                     triangle_mesh = meshio.Mesh(points=points,
                                         cells=[("triangle", triangle_cells)],
                                         cell_data={"boundaries":[triangle_data]})
                     meshio.write(output_filename +  "_boundaries.xdmf", triangle_mesh)
-                except:
-                    print("Unable to convert", output_filename)
-
+                except Exception as e: 
+                    print("\t",e)
+                    quit()
 
 if __name__ == "__main__":
     main()

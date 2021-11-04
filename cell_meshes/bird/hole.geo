@@ -5,12 +5,13 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface_5000.stl";
+Merge "cell_surface_500.stl";
 
 // Lengths
-length = 400.;
-height = 400.;
-depth = 400.;
+l = 300.;
+length = l;
+height = l;
+depth = l;
 lcar1 = 0.5;
 
 // Translate {length, height, depth} {Surface{1};}
@@ -62,9 +63,5 @@ Physical Volume(301) = {26};                  // gel
 
 // Characteristic Length
 Mesh.CharacteristicLengthFactor = 1;
-Characteristic Length{PointsOf{Physical Surface{201};}} = 15;
+Characteristic Length{PointsOf{Physical Surface{201};}} = 20;
 
-// Generate Mesh
-Mesh 3;
-Mesh.MshFileVersion = 2.2;
-// Save "hole.msh";
