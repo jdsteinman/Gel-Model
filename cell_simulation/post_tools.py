@@ -95,11 +95,7 @@ class UnstructuredData:
         self.u = np.asfarray(u)
         self.u_data = np.asfarray(u_data)
         self.F = np.asfarray(F)
-
-        if mu is not None:
-            self.mu = np.asfarray(mu)
-        else:
-            self.mu=np.zeros((ncells))
+        self.mu = np.asfarray(mu)
 
         # Preallocate
         self.r = np.zeros((npoints))
@@ -147,18 +143,18 @@ class UnstructuredData:
             pyvtk.Vectors(self.eigvec[:,:,0], name="e1"),
             pyvtk.Vectors(self.eigvec[:,:,1], name="e2"),
             pyvtk.Vectors(self.eigvec[:,:,2], name="e3"),
-            pyvtk.Scalars(self.theta, name="theta")
+            pyvtk.Scalars(self.theta, name="theta"),
+            pyvtk.Scalars(self.mu, name="mu")
         )
 
-        cell_data = pyvtk.CellData(\
-            pyvtk.Scalars(self.mu, name="mu")
-            )
+        # cell_data = pyvtk.CellData(\
+        #     pyvtk.Scalars(self.mu, name="mu")
+        #     )
 
         vtk = pyvtk.VtkData(\
             pyvtk.UnstructuredGrid(self.points,
                 tetra=self.conn),            # pyvtk.Tensors(arr_to_tensor(self.eigvec), name="v"),
-                point_data,
-                cell_data)
+                point_data)
         vtk.tofile(fname)
 
     #  Low Level Functions
