@@ -35,8 +35,8 @@ def main():
     params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
 
 #    params['output_folder'] = './output/single_field/coarse/homogeneous'
-    params['output_folder'] = './output/single_field/coarse/FGM-mu'
-#    params['output_folder'] = './output/single_field/coarse/FGM-psi'
+#    params['output_folder'] = './output/single_field/coarse/FGM-mu'
+    params['output_folder'] = './output/single_field/coarse/FGM-psi'
 
     solver_call(params)
 
@@ -99,6 +99,8 @@ def solver_call(params):
     u_init_file.read_checkpoint(u_init, "u", 0)
     u_init.set_allow_extrapolation(True)
 
+    u_init.vector()[:] = u_init.vector()[:]*0.2
+
     u_0 = df.interpolate(u_init, V)
     # u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
     df.assign(u, u_0)
@@ -122,11 +124,11 @@ def solver_call(params):
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
     
     mu = nt.ElasticModulus(mu_ff, surface_nodes, normal_distance, D)
-    nu = nt.ElasticModulus(nu_ff, surface_nodes, normal_distance, D2) 
+    nu = nt.ElasticModulus(nu_ff, surface_nodes, normal_distance, D) 
     kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
     c1 = mu/2
-    c2 = kappa_ff
+    c2 = kappa
 
     # Stored strain energy density (Neo-Hookean formulation)
     psi = c1*(IC_bar-d) + c2*(Ju**2-1-2*df.ln(Ju))/4 
@@ -154,6 +156,7 @@ def solver_call(params):
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
+    #solver.parameters['newton_solver']['linear_solver']  = 'mumps' 
     solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
 
@@ -172,7 +175,7 @@ def solver_call(params):
         print("Solving =========================")
 
     # Solve
-    chunks = 10
+    chunks = 5 
     sys.stdout.flush()
     total_start = time.time() 
     for i in range(chunks):

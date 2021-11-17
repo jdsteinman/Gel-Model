@@ -20,7 +20,21 @@ class BoundaryFunc(df.UserExpression):
             value[0], value[1], value[2] = (0, 0, 0)
 
 class ElasticModulus(df.UserExpression):
-    def __init__ (self, lmbda, vert, train_r, train_d, **kwargs):
+    def __init__ (self, lmbda, degradation, **kwargs):
+        super().__init__(**kwargs)
+        self.lmbda = lmbda        # modulus 
+        self.degradation = degradation
+
+    def eval(self, value, x):
+        d = self.degradation(x)
+        value[0] = self.lmbda*(1-d)
+
+    def value_shape(self):
+        return ()
+
+"""
+class ElasticModulus(df.UserExpression):
+    def __init__ (self, lmbda, vert, train_r, train_d, **kwargs)
         super().__init__(**kwargs)
         self.lmbda = lmbda        # modulus 
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices
@@ -43,6 +57,7 @@ class ElasticModulus(df.UserExpression):
 
     def value_shape(self):
         return ()
+"""
 
 class shear_modulus(df.UserExpression):
     def __init__ (self, vert, mu, rmax, p=1, method="power", **kwargs):

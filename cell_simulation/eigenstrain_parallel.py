@@ -13,7 +13,7 @@ Simulation of three-field hyperelastic Gel using eigenstrain.
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
-df.parameters['form_compiler']['cpp_optimize'] = False
+df.parameters['form_compiler']['cpp_optimize'] = True
 df.parameters['form_compiler']['quadrature_degree'] = 2
 # df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 # df.parameters['krylov_solver']['relative_tolerance'] = 1E-6
@@ -25,11 +25,26 @@ def main():
 
     params = {}
 
-    params['output_folder'] = './output/eigenstrain/'
+    params['mesh'] = "../cell_meshes/bird/hole_coarse.xdmf"
+    params['domains'] = "../cell_meshes/bird/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_meshes/bird/hole_coarse_boundaries.xdmf"
 
-    params['mesh'] = "../cell_meshes/bird/inclusion.xdmf"
-    params['domains'] = "../cell_meshes/bird/inclusion_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/inclusion_boundaries.xdmf"
+    params['mesh_init'] = "../cell_meshes/bird/hole_coarse.xdmf"
+    params['u_init'] = "./output/single_field/coarse/homogeneous/u_out.xdmf"
+
+    params['mu'] = 100e-6
+    params['nu'] = 0.49
+    params['degradation'] = np.loadtxt("./output/single_field/coarse/homogeneous/degradation.txt")
+
+    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
+    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
+    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
+
+    params['chunks'] = 5
+
+    # params['output_folder'] = './output/single_field/coarse/homogeneous'
+    # params['output_folder'] = './output/single_field/coarse/FGM-mu'
+    params['output_folder'] = './output/single_field/eigenstrain'
 
     solver_call(params)
 
@@ -126,13 +141,8 @@ def solver_call(params):
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    # solver.parameters['newton_solver']['linear_solver'] = 'superlu_dist'
-    # solver.parameters['newton_solver']['linear_solver'] = 'superlu_dist'
-    # solver.parameters['newton_solver']['linear_solver'] = 'gmres'
-    # solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
-
-    solver.parameters['nonlinear_solver'] = 'snes'
-    solver.parameters["snes_solver"]["maximum_iterations"] = 50000
+    solver.parameters['newton_solver']['linear_solver'] = 'gmres'
+    solver.parameters['newton_solver']['preconditioner'] = 'jacobi'
 
     # MPI
     comm = MPI.COMM_WORLD

@@ -5,7 +5,7 @@ import numpy as np
 def main():
 
     directory = "bird"
-    file = "hole.xdmf"
+    file = "hole_coarse.xdmf"
 
     input_filename = os.path.join(directory, file)
     print("Converting %s" % input_filename)
