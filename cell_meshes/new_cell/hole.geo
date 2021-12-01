@@ -7,14 +7,17 @@
 
 Merge "cell_surface_1000.stl";
 
+// Centroid
+cx = 76.9589;
+cy = 75.9575;
+cz = 69.6501;
+
 // Lengths
 l = 250.;
 length = l;
 height = l;
 depth = l;
 lcar1 = 0.5;
-
-// Translate {length, height, depth} {Surface{1};}
 
 // Outer Boundary Points
 Point(1) = {length/2,height/2,depth/2,lcar1}; 
@@ -25,6 +28,9 @@ Point(5) = {length/2,-height/2,depth/2,lcar1};
 Point(6) = {length/2,-height/2,-depth/2,lcar1}; 
 Point(7) = {-length/2,height/2,-depth/2,lcar1}; 
 Point(8) = {-length/2,-height/2,-depth/2,lcar1}; 
+
+// Translate Box
+Translate{cx, cy, cz} {Point{1,2,3,4,5,6,7,8};}
 
 // Outer Box
 Line(1) = {3,1};
