@@ -5,10 +5,10 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface_500.stl";
+Merge "cell_surface_1000.stl";
 
 // Lengths
-l = 300.;
+l = 250.;
 length = l;
 height = l;
 depth = l;
