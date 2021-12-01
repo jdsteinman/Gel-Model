@@ -24,13 +24,12 @@ def main():
     params['boundaries'] = "./meshes/hole_boundaries.xdmf"
     params['cell_vertices'] = np.loadtxt("./meshes/hole_surface.txt")
 
-    params['u_init'] = "./output/DBC/homogeneous/u_out.xdmf"
+    params['u_init'] = "./output/FBC/homogeneous/u_out.xdmf"
 
-    params['mu_cell'] = 100e-5
-    params['mu_gel']  = 100e-6
+    params['mu']  = 100e-6
     params['nu'] = 0.49
 
-    params["chunks"] = 2
+    params["chunks"] = 3
 
     # params['output_folder'] = './output/DBC/homogeneous'
     # params['output_folder'] = './output/DBC/FGM'
@@ -40,47 +39,35 @@ def main():
     solver_call(params)
 
 class Modulus(df.UserExpression):
-    def __init__(self, modulus_cell, modulus_gel, domains, **kwargs):
-        self.lmbda_cell = modulus_cell
+    def __init__(self, modulus_gel, **kwargs):
         self.lmbda_gel = modulus_gel
-        self.domains = domains
         super().__init__(**kwargs)
 
     def value_shape(self):
         return ()
 
-    def eval_cell(self, value, x, ufl_cell):
-        if self.domains[ufl_cell.index] == 301:
+    def eval(self, value, x):
             value[0] = self.lmbda_gel*1.01 
 
-        elif self.domains[ufl_cell.index] == 302:
-            value[0] = self.lmbda_cell
-
 class DegradedModulus(df.UserExpression):
-    def __init__(self, modulus_cell, modulus_gel, domains, surface_vert, **kwargs):
-        self.lmbda_cell = modulus_cell
+    def __init__(self, modulus_gel, surface_vert, **kwargs):
         self.lmbda_gel = modulus_gel
-        self.domains = domains
         self.vert = surface_vert
         super().__init__(**kwargs)
 
     def value_shape(self):
         return ()
 
-    def eval_cell(self, value, x, ufl_cell):
-        if self.domains[ufl_cell.index] == 301:
-            px = np.array([x[0], x[1], x[2]], dtype="float64")
-            r = px - self.vert
-            r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
-            r = np.amin(r)
+    def eval(self, value, x):
+        px = np.array([x[0], x[1], x[2]], dtype="float64")
+        r = px - self.vert
+        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
+        r = np.amin(r)
 
-            if r < 10:
-                value[0]=self.lmbda_gel*((r/10)**0.5 + 0.01)
-            else:
-                value[0] =  self.lmbda_gel*1.01 
-
-        elif self.domains[ufl_cell.index] == 302:
-            value[0] = self.lmbda_cell
+        if r < 10:
+            value[0]=self.lmbda_gel*((r/10)**0.5 + 0.01)
+        else:
+            value[0] =  self.lmbda_gel*1.01 
 
 def solver_call(params):
 
@@ -121,12 +108,12 @@ def solver_call(params):
     u_init.set_allow_extrapolation(True)
 
     u_0 = df.interpolate(u_init, V)
-    df.assign(u, u_0)
+    # df.assign(u, u_0)
 
     # Kinematics
-    # B = df.Expression(["-1e-6*x[0]", "0", "0"], t=0, degree=0)     # Body force per unit volume
     B = df.Constant((0, 0, 0))     # Traction force on the boundary
-    T = df.Expression(["0*t", "0", "0"], t=0, degree=0)    # Traction force on the boundary
+    # T = df.Constant((-5e-5, 0, 0))     # Traction force on the boundary
+    T = df.Expression(["-7e-5*t*x[0]/10", "0", "0"], t=0, degree=0)    # Traction force on the boundary
     dim = u.geometric_dimension()
     I = df.Identity(dim)             # Identity tensor
     F = I + df.grad(u)             # Deformation gradient
@@ -139,10 +126,9 @@ def solver_call(params):
 
     # Material parameters
     nu = params["nu"]          
-    mu_cell = params["mu_cell"]
-    mu_gel = params["mu_gel"]
-    mu = Modulus(mu_cell, mu_gel, domains)
-    # mu = DegradedModulus(mu_cell, mu_gel, domains, surface_vert)  
+    mu_ff = params["mu"]
+    mu = Modulus(mu_ff)
+    # mu = DegradedModulus(mu_ff, surface_vert)  
     lmbda = 2*nu*mu/(1-2*nu)      
     kappa = lmbda+2*mu/3
 
@@ -150,8 +136,7 @@ def solver_call(params):
     psi = (mu/2)*(IC_bar - dim) + (kappa/4)*(J**2-1-2*df.ln(J))
 
     # Total potential energy
-    Pi = psi*dx(301) + psi*dx(302) - df.dot(B, u)*dx(302) - df.dot(T, u)*ds(202)
-    Pi = psi*dx(301) + psi*dx(302) - df.dot(B, u)*dx(302) - df.dot(T, u)*ds(202)
+    Pi = psi*dx(301) - df.dot(B, u)*dx(301) - df.dot(T, u)*ds(202)
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
     dPi = df.derivative(Pi, u, w)
@@ -194,7 +179,7 @@ def solver_call(params):
 
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
-    mu = df.project(mu, df.FunctionSpace(mesh, "DG", 0))
+    mu = df.project(mu, df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]
