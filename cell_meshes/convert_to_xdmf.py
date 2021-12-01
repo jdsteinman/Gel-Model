@@ -1,5 +1,6 @@
 import meshio
 import os
+import numpy as np
 
 def main():
     directories = ['./bird']
@@ -28,7 +29,9 @@ def main():
                         triangle_data = mesh.cell_data_dict["gmsh:physical"][key]
                     elif key == "tetra":
                         tetra_data = mesh.cell_data_dict["gmsh:physical"][key]
-
+                        print(tetra_data)
+                        print(tetra_cells[tetra_data==301])
+                        print(points[np.unique(tetra_cells[tetra_data==301])])
                 # Separate meshes
                 try:
                     print("\tWriting mesh")
