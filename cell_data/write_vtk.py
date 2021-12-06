@@ -1,15 +1,14 @@
 import pyvtk
 import numpy as np
 
-path = 'new_cell/'
+path = 'star_destroyer/'
 # surface_points = np.loadtxt(path+'CytoD_vertices.txt')
 # surface_faces = np.loadtxt(path+'CytoD_faces.txt', dtype=int)
 # surface_disp = np.loadtxt(path+'displacements.txt')
 
 surface_points = np.loadtxt('../cell_meshes/new_cell/cell_surface_1000_vertices.txt')
 surface_faces = np.loadtxt('../cell_meshes/new_cell/cell_surface_1000_faces.txt', dtype=int)
-surface_disp = np.loadtxt(path+'surface_1000_displacements.txt')
-
+surface_disp = np.loadtxt(path+'cell_surface_1000_displacements.txt')
 
 vtk = pyvtk.VtkData(\
     pyvtk.UnstructuredGrid(surface_points,
