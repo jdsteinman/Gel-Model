@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial import distance_matrix
 
-def neighbors(points, U_beads, NN):
+def neighbors(points, U_beads, N):
     points_ = []
     U_beads_ = []
 
@@ -11,13 +11,15 @@ def neighbors(points, U_beads, NN):
 
     for i, (xyz, U) in enumerate(zip(points, U_norm)):
 
-        # NN closest neibors
+        # N closest neighbors
         xyz = xyz.reshape((1,-1))
         dist = distance_matrix(xyz, points)
-        ind = np.argsort(dist[0])[1:NN+1]  
+        ind = np.argsort(dist[0])[1:N+1]  
 
-        # Dot product score
-        dots = [np.dot(U, U_norm[i,:]) for i in ind]  
+        # Dot product with neighoring beads
+        dots = [np.dot(U, U_norm[i,:]) for i in ind]
+
+        # Mean score  
         avg_dot = np.mean(dots)
 
         # Threshold
@@ -33,12 +35,6 @@ def main():
     beads_init  = np.loadtxt(path+"beads_init.txt")
     beads_final = np.loadtxt(path+"beads_final.txt")
     U_beads = beads_final - beads_init
-
-
-    mag = np.sum(U_beads*U_beads, axis=1)
-
-    print("Number of large displacements: ")
-    print(np.sum(mag>2.77366))
 
     (points, disp) = neighbors(beads_init, U_beads, 10)
 
