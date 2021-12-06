@@ -6,12 +6,12 @@ Extract surface vertices and displacements
 path = "new_cell/"
 # file = "isochoric_surface_data_2_um_gridsize.csv"
 file = "interpolated_data.csv"
-dat = pd.read_csv(path + file)
+dat = pd.read_csv(path + file, index_col=False)
 
 vert = dat.loc[:,'X':'Z']
 vert.to_csv(path + "surface_1000_vertices.txt", sep=" ", index=False, header=False)
 
-disp=dat.loc[:, 'u':'w']
+disp=-1*dat.loc[:, 'u':'w']
 disp.to_csv(path + "surface_1000_displacements.txt", sep=" ", index=False, header=False)
 
 # faces = np.loadtxt(path+"CytoD_faces.txt")
