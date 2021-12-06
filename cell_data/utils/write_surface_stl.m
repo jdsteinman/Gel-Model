@@ -3,8 +3,8 @@ clear all
 close all
 
 inpath = "../star_destroyer/";
-outpath = "../star_destroyer/IN/meshes";
-vertices = textread(inpath + "cell_surface_vertices.txt");
+outpath = "../star_destroyer/NI/meshes/";
+vertices = textread(inpath + "cell_surface_normal_vertices.txt");
 faces = textread(inpath + "cell_surface_faces.txt");
 
 for i = 1:size(vertices, 1)
