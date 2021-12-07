@@ -1,70 +1,3 @@
-import dolfin as df
-from dolfin.function.expression import UserExpression
-import numpy as np
-import nodal_tools as nt
-import time
-import os
-import sys
-from mpi4py import MPI
-from shutil import copyfile 
-
-df.parameters['linear_algebra_backend'] = 'PETSc'
-df.parameters['form_compiler']['representation'] = 'uflacs'
-df.parameters['form_compiler']['optimize'] = True
-df.parameters['form_compiler']['cpp_optimize'] = True
-df.parameters['form_compiler']['quadrature_degree'] = 3
-df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
-df.parameters['krylov_solver']['relative_tolerance'] = 1E-4
-df.parameters['krylov_solver']['maximum_iterations'] = 100000
-
-def main():
-    params = {}
-
-    params['mesh'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse.xdmf"
-    params['domains'] = "../cell_datastar_destroyer/NI/meshes/hole_coarse_domains.xdmf"
-    params['boundaries'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse_boundaries.xdmf"
-
-    params['mesh_init'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse.xdmf"
-    params['u_init'] = "./output/star_destroyer/homogeneous/u_out.xdmf"
-
-    params['mu'] = 100e-6
-    params['nu'] = 0.49
-    # params['degradation'] = np.loadtxt("./output/star_destroyer/homogeneous/degradation.txt")
-    # params['degradation'] = np.loadtxt("./output/single_field/iteration_2/degradation.txt")
-
-    params['surface_nodes'] = np.loadtxt('../cell_data/star_destroyer/NI/meshes/cell_surface_coarse_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/star_destroyer/NI/meshes/cell_surface_coarse_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/star_destroyer/NI/displacements/surface_displacements_coarse_NI.txt')
-
-    params['chunks'] = 5
-
-    params['output_folder'] = "./output/star_destroyer/homogeneous"
-
-    solver_call(params)
-
-class Degradation(df.UserExpression):
-    def __init__ (self, dmax, surface_vert, rmax, **kwargs):
-        super().__init__(**kwargs)
-        self.dmax = dmax
-        self.vert = surface_vert
-        self.rmax = rmax
-
-    def eval(self, value, x):
-        px = np.array([x[0], x[1], x[2]], dtype="float64")
-
-        # Distance to surface
-        r = px - self.vert
-        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
-        r = np.amin(r)
-
-        if r < self.rmax:
-            value[0] = -self.dmax*(1/(r+1)-1/(self.rmax+1))
-            value[0] = -self.dmax
-        else:
-            value[0] = 0
-
-    def value_shape(self):
-        return ()
 
 def solver_call(params):
     # MPI
@@ -73,20 +6,15 @@ def solver_call(params):
     if comm.Get_size()>1:
         df.set_log_level(40)  # Mute output
 
-    # Cell Surface
-    surface_nodes = params['surface_nodes']
-    surface_faces = params['surface_faces']
-    displacements = params['displacements']
-
     # Gel Volume Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
-    # mvc = df.MeshValueCollection("size_t", mesh, 3)
-    # with df.XDMFFile(params["domains"]) as infile:
-    #     infile.read(mvc, "domains") 
-    # domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
+    mvc = df.MeshValueCollection("size_t", mesh, 2)
+    with df.XDMFFile(params["domains"]) as infile:
+        infile.read(mvc, "domains") 
+    domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["boundaries"]) as infile:
@@ -94,12 +22,12 @@ def solver_call(params):
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     # Initialization Mesh
-    # mesh_init = df.Mesh()
-    # with df.XDMFFile(params["mesh_init"]) as infile:
-    #     infile.read(mesh_init)
+    mesh_init = df.Mesh()
+    with df.XDMFFile(params["mesh_init"]) as infile:
+        infile.read(mesh_init)
 
     # Measures
-    dx = df.Measure("dx", domain=mesh)
+    dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
@@ -111,14 +39,14 @@ def solver_call(params):
     du = df.TrialFunction(V)
 
     # Initialize  
-    # V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
-    # u_init = df.Function(V_init)  
-    # u_init_file = df.XDMFFile(params["u_init"])
-    # u_init_file.read_checkpoint(u_init, "u", 0)
-    # u_init.set_allow_extrapolation(True)
+    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    u_init = df.Function(V_init)  
+    u_init_file = df.XDMFFile(params["u_init"])
+    u_init_file.read_checkpoint(u_init, "u", 0)
+    u_init.set_allow_extrapolation(True)
 
-    # u_0 = df.interpolate(u_init, V)
-    # df.assign(u, u_0)
+    u_0 = df.interpolate(u_init, V)
+    df.assign(u, u_0)
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
@@ -137,32 +65,34 @@ def solver_call(params):
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
     
     # Degradation
-    # V_1 = df.FunctionSpace(mesh, "CG", 1)
-    # degradation = df.Function(V_1)
-    # v2d = df.vertex_to_dof_map(V_1)
-    # degradation.vector()[v2d] = params["degradation"]
-    # degradation.set_allow_extrapolation(True)
+    V_1 = df.FunctionSpace(mesh, "CG", 1)
+    degradation = df.Function(V_1)
+    v2d = df.vertex_to_dof_map(V_1)
+    degradation.vector()[v2d] = params["degradation"]
+    degradation.set_allow_extrapolation(True)
 
-    # degradation = Degradation(0.75, surface_nodes, 60)
+    mu = nt.ElasticModulus(mu_ff, degradation)
+    nu = nt.ElasticModulus(nu_ff, degradation) 
+    kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
-    # mu = nt.ElasticModulus(mu_ff, degradation)
-    # nu = nt.ElasticModulus(nu_ff, degradation) 
-    # kappa = 2*mu*(1+nu)/3/(1-2*nu)
-
-    c1 = mu_ff/2
-    c2 = kappa_ff
+    c1 = mu/2
+    c2 = kappa
 
     # Stored strain energy density (Neo-Hookean formulation)
     psi = c1*(IC_bar-d) + c2*(Ju**2-1-2*df.ln(Ju))/4 
 
     # Total potential energy
-    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
+    Pi = psi*dx(301) - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
     res = df.derivative(Pi, u, u_)
     Dres = df.derivative(res, u, du)
 
     # Boundary Conditions
+    surface_nodes = params['surface_nodes']
+    surface_faces = params['surface_faces']
+    displacements = params['displacements']
+
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
     midpoint_disp = nt.get_midpoint_disp(displacements, surface_faces)
     face_map = nt.get_face_mapping(midpoints, mesh, boundaries, 202)
@@ -217,7 +147,7 @@ def solver_call(params):
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     J = df.project(Ju, V=df.FunctionSpace(mesh, "DG", 0))
-    mu = df.project(mu_ff, V=df.FunctionSpace(mesh, "CG", 1))
+    mu = df.project(mu, V=df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]

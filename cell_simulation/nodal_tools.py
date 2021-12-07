@@ -59,7 +59,7 @@ class ElasticModulus(df.UserExpression):
         return ()
 """
 
-class shear_modulus(df.UserExpression):
+class ShearModulus(df.UserExpression):
     def __init__ (self, vert, mu, rmax, p=1, method="power", **kwargs):
         super().__init__(**kwargs)
         self._vert = np.asarray(vert, dtype="float64")  # surface vertices

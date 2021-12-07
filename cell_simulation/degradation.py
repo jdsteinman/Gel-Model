@@ -36,7 +36,8 @@ def main(folder):
     neg_ind = np.where(discrepancy<0)[0]    # overestimation
     dneg = discrepancy[neg_ind]
 
-    degradation[pos_ind] = dpos * 0.999/5
+    degradation[pos_ind] = dpos * -0.5/5
+    print(degradation)
     # degradation[neg_ind] = dneg_scaled
     degradation[neg_ind] = 0
 
