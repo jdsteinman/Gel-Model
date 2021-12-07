@@ -2,7 +2,7 @@ import meshio
 import os
 import numpy as np
 
-directory = "../triangle/NI/meshes/"
+directory = "../star_destroyer/NI/meshes/"
 file = "hole_coarse.xdmf"
 
 input_filename = os.path.join(directory, file)
