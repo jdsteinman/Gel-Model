@@ -6,12 +6,8 @@ import os
 Get displacements from interpolated data
 """
 
-idir  = "../star_destroyer/"
-ifile = "interpolated_NI_surface_data_coarse.csv"
-odir  = "../star_destroyer/IN/displacements"
-ofile = "surface_displacements_IN_coarse.txt"
-input_filename = os.path.join(idir, ifile)
-output_filename = os.path.join(odir, ofile)
+input_filename = "../bird/interpolated_NI_surface_coarse_data.csv"
+output_filename = "../bird/IN/displacements/surface_displacements_IN_coarse.txt"
 
 dat = pd.read_csv(input_filename, index_col=False)
 disp = -1*dat.loc[:, 'u':'w']

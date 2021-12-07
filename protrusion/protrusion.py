@@ -39,6 +39,19 @@ def main():
 
     solver_call(params)
 
+class ElasticModulus(df.UserExpression):
+    def __init__ (self, lmbda, degradation, **kwargs):
+        super().__init__(**kwargs)
+        self.lmbda = lmbda        # modulus 
+        self.degradation = degradation
+
+    def eval(self, value, x):
+        d = self.degradation(x)
+        value[0] = self.lmbda*(1-d)
+
+    def value_shape(self):
+        return ()
+
 class Modulus(df.UserExpression):
     def __init__(self, modulus_cell, modulus_gel, domains, **kwargs):
         self.lmbda_cell = modulus_cell
@@ -81,6 +94,30 @@ class DegradedModulus(df.UserExpression):
 
         elif self.domains[ufl_cell.index] == 302:
             value[0] = self.lmbda_cell
+
+class Degradation(df.UserExpression):
+    def __init__ (self, dmax, surface_vert, rmax, **kwargs):
+        super().__init__(**kwargs)
+        self.dmax = dmax
+        self.vert = surface_vert
+        self.rmax = rmax
+
+    def eval(self, value, x):
+        px = np.array([x[0], x[1], x[2]], dtype="float64")
+
+        # Distance to surface
+        r = px - self.vert
+        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
+        r = np.amin(r)
+
+        if r < self.rmax:
+            value[0] = -self.dmax*(1/(r+1)-1/(self.rmax+1))
+            value[0] = -self.dmax
+        else:
+            value[0] = 0
+
+    def value_shape(self):
+        return ()
 
 def solver_call(params):
 

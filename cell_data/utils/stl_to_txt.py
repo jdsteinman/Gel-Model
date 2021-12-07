@@ -6,7 +6,7 @@ import numpy as np
 Extract points and faces from cell surface mesh
 """
 
-directories = ['../star_destroyer/NI/meshes']
+directories = ['../bird/IN/meshes']
 
 for directory in directories:
     for file in os.listdir(directory):

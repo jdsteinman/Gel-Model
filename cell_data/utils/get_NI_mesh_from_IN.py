@@ -4,12 +4,12 @@ import meshio
 import os
 
 # Files
-dir_in = "../star_destroyer/IN/meshes"
-dir_out = "../star_destroyer/NI/meshes"
+dir_in = "../bird/IN/meshes"
+dir_out = "../bird/NI/meshes"
 filename = "cell_surface_coarse.stl"
 
 # Displacements
-displacements_file = "../star_destroyer/interpolated_NI_surface_displacements_coarse.csv"
+displacements_file = "../bird/interpolated_NI_surface_coarse_data.csv"
 displacements_NI = pd.read_csv(displacements_file, index_col=False).loc[:, 'u':'w'].to_numpy()
 displacements_IN = -1*displacements_NI
 

@@ -3,6 +3,8 @@ import os
 import numpy as np
 
 """
+Write stl mesh of cell surface
+
 Input:
     points: array
     faces:  array
@@ -11,9 +13,8 @@ Output:
 """
 
 # Directories
-# dir_in = "../star_destroyer/IN/meshes"
-dir_in = "../star_destroyer"
-dir_out = "../star_destroyer/IN/meshes"
+dir_in = "../triangle"
+dir_out = "../triangle/IN/meshes"
 
 # Load Data
 surface_points = np.loadtxt(os.path.join(dir_in, "CytoD_vertices.txt"))
