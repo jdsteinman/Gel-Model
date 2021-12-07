@@ -207,8 +207,8 @@ def solver_call(params):
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(dPi, u, bcs=bcs, J=ddPi)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['relative_tolerance'] = 1e-9
-    # solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
+    # solver.parameters['newton_solver']['relative_tolerance'] = 1e-9
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
     solver.parameters['newton_solver']['linear_solver'] = 'mumps'
     # solver.parameters['newton_solver']['linear_solver'] = 'gmres'
     # solver.parameters['newton_solver']['preconditioner'] = 'hypre_amg'

@@ -1,10 +1,12 @@
 import dolfin as df
+from dolfin.function.expression import UserExpression
 import numpy as np
 import nodal_tools as nt
 import time
 import os
 import sys
 from mpi4py import MPI
+from shutil import copyfile 
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -18,25 +20,27 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def main():
     params = {}
 
-    params['mesh'] = "../cell_meshes/bird/hole_coarse.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_coarse_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_coarse_boundaries.xdmf"
+    # Mesh and initial condition
+    cell = "triangle"
+    params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
 
-    params['mu_ff'] = 100e-6
+    params['mesh_init'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['u_init'] = "./output/"+cell+"/homogeneous/u_out.xdmf"
+
+    # Material Parameters
+    params['mu'] = 100e-6
     params['nu'] = 0.49
 
-    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
+    # Boundary Conditions
+    params['surface_nodes'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
+    params['surface_faces'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_faces.txt", int)
+    params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
-    params['mesh_init'] = "../cell_meshes/bird/hole_coarse.xdmf"
-    params['u_init'] = "./output/single_field/coarse/homogeneous/u_out.xdmf"
-
-    params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
-
-#    params['output_folder'] = './output/single_field/coarse/homogeneous'
-#    params['output_folder'] = './output/single_field/coarse/FGM-mu'
-    params['output_folder'] = './output/single_field/coarse/FGM-psi'
+    # Simulation and output
+    params['chunks'] = 4
+    params['output_folder'] = "./output/"+cell+"/homogeneous"
 
     solver_call(params)
 
@@ -47,15 +51,20 @@ def solver_call(params):
     if comm.Get_size()>1:
         df.set_log_level(40)  # Mute output
 
+    # Cell Surface
+    surface_nodes = params['surface_nodes']
+    surface_faces = params['surface_faces']
+    displacements = params['displacements']
+
     # Gel Volume Mesh
     mesh = df.Mesh()
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
-    mvc = df.MeshValueCollection("size_t", mesh, 2)
-    with df.XDMFFile(params["domains"]) as infile:
-        infile.read(mvc, "domains") 
-    domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
+    # mvc = df.MeshValueCollection("size_t", mesh, 3)
+    # with df.XDMFFile(params["domains"]) as infile:
+    #     infile.read(mvc, "domains") 
+    # domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["boundaries"]) as infile:
@@ -63,29 +72,16 @@ def solver_call(params):
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     # Initialization Mesh
-    mesh_init = df.Mesh()
-    with df.XDMFFile(params["mesh_init"]) as infile:
-        infile.read(mesh_init)
-
-    # AVIC Surface
-    surface_nodes = params['surface_nodes']
-    surface_faces = params['surface_faces']
-    displacements = params['displacements']
-
-    # Residuals
-    res = params["res"]
-    normal_distance = res[:,3]
-    discrepancy = np.sum(res[:,0:3]**2, axis=1)**0.5
-    D = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy)) * 0.5 
-    D2 = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy)) * 0.1   
+    # mesh_init = df.Mesh()
+    # with df.XDMFFile(params["mesh_init"]) as infile:
+    #     infile.read(mesh_init)
 
     # Measures
-    dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
+    dx = df.Measure("dx", domain=mesh)
     ds = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
 
     # Function Space
     element_u = df.VectorElement("CG", mesh.ufl_cell(), 2)
-  
     V = df.FunctionSpace(mesh, element_u)
     u = df.Function(V)
     u.rename('u','displacement')
@@ -93,17 +89,14 @@ def solver_call(params):
     du = df.TrialFunction(V)
 
     # Initialize  
-    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
-    u_init = df.Function(V_init)  
-    u_init_file = df.XDMFFile(params["u_init"])
-    u_init_file.read_checkpoint(u_init, "u", 0)
-    u_init.set_allow_extrapolation(True)
+    # V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    # u_init = df.Function(V_init)  
+    # u_init_file = df.XDMFFile(params["u_init"])
+    # u_init_file.read_checkpoint(u_init, "u", 0)
+    # u_init.set_allow_extrapolation(True)
 
-    u_init.vector()[:] = u_init.vector()[:]*0.2
-
-    u_0 = df.interpolate(u_init, V)
-    # u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V)
-    df.assign(u, u_0)
+    # u_0 = df.interpolate(u_init, V)
+    # df.assign(u, u_0)
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
@@ -111,34 +104,28 @@ def solver_call(params):
     d = u.geometric_dimension()
     I = df.Identity(d)             # Identity tensor
     F = I + df.grad(u)             # Deformation gradient
-    Ju = df.det(F)
+    Ju = df.det(F)                 # Jacobian
     C = F.T*F                      # Right Cauchy-Green tensor
     C_bar = C/Ju**(2/d)            # Isochoric decomposition
-
-    # Invariants of deformation tensors
-    IC_bar = df.tr(C_bar)
+    IC_bar = df.tr(C_bar)          # Invariant
 
     # Material parameters
-    mu_ff = params["mu_ff"]
+    mu_ff = params["mu"]
     nu_ff = params["nu"]
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
     
-    mu = nt.ElasticModulus(mu_ff, surface_nodes, normal_distance, D)
-    nu = nt.ElasticModulus(nu_ff, surface_nodes, normal_distance, D) 
-    kappa = 2*mu*(1+nu)/3/(1-2*nu)
-
-    c1 = mu/2
-    c2 = kappa
+    c1 = df.Constant(mu_ff/2)
+    c2 = df.Constant(kappa_ff)
 
     # Stored strain energy density (Neo-Hookean formulation)
     psi = c1*(IC_bar-d) + c2*(Ju**2-1-2*df.ln(Ju))/4 
 
     # Total potential energy
-    Pi = psi*dx(301) - df.dot(B, u)*dx - df.dot(T, u)*ds
+    Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
-    res = df.derivative(Pi, u, u_)
-    Dres = df.derivative(res, u, du)
+    dPi = df.derivative(Pi, u, u_)
+    ddPi = df.derivative(dPi, u, du)
 
     # Boundary Conditions
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
@@ -154,11 +141,11 @@ def solver_call(params):
     bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem
-    problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
+    problem = df.NonlinearVariationalProblem(dPi, u, bcs=bcs, J=ddPi)
     solver = df.NonlinearVariationalSolver(problem)
-    #solver.parameters['newton_solver']['linear_solver']  = 'mumps' 
     solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
 
     # MPI
     ele = np.array(len(mesh.cells()),'d') # Number of elements
@@ -175,7 +162,9 @@ def solver_call(params):
         print("Solving =========================")
 
     # Solve
-    chunks = 5 
+    chunks = params["chunks"]
+    u.vector()[:]*=1/chunks
+
     sys.stdout.flush()
     total_start = time.time() 
     for i in range(chunks):
@@ -194,7 +183,7 @@ def solver_call(params):
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     J = df.project(Ju, V=df.FunctionSpace(mesh, "DG", 0))
-    mu = df.project(mu, V=df.FunctionSpace(mesh, "CG", 1))
+    mu = df.project(mu_ff, V=df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]
@@ -221,15 +210,19 @@ def solver_call(params):
     out_file = df.XDMFFile((os.path.join(output_folder, "u_out.xdmf")))
     out_file.write_checkpoint(u, "u", 0)   #Not appending
 
-    with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
-        f.write("Mesh: {:s}\n".format(params["mesh"]))
-        f.write("No. Elements: {:d}\n".format(int(ele_sum)))
-        f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
-        f.write("mu_ff = {:e}\n".format(mu_ff))
-        f.write("nu_ff = {:e}\n".format(nu_ff))
-        f.write("Total Time = {:f}s\n".format(time.time()-total_start))
+    if rank==0:
+        python_file = os.path.basename(__file__)
+        copyfile(python_file, os.path.join(output_folder, python_file))
 
-    if rank==0: print("Done")
+        with open(os.path.join(output_folder,"log_params.txt"), "w+") as f:
+            f.write("Mesh: {:s}\n".format(params["mesh"]))
+            f.write("No. Elements: {:d}\n".format(int(ele_sum)))
+            f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
+            f.write("mu_ff = {:e}\n".format(mu_ff))
+            f.write("nu_ff = {:e}\n".format(nu_ff))
+            f.write("Total Time = {:f}s\n".format(time.time()-total_start))
+
+        print("Done")
 
 if __name__=="__main__":
     main()

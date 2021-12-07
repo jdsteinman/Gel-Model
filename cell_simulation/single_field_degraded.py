@@ -20,29 +20,35 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def main():
     params = {}
 
-    params['mesh'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse.xdmf"
-    params['domains'] = "../cell_datastar_destroyer/NI/meshes/hole_coarse_domains.xdmf"
-    params['boundaries'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse_boundaries.xdmf"
+    # Mesh and initial condition
+    cell = "bird"
+    params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
 
-    params['mesh_init'] = "../cell_data/star_destroyer/NI/meshes/hole_coarse.xdmf"
-    params['u_init'] = "./output/star_destroyer/homogeneous/u_out.xdmf"
+    params['mesh_init'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['u_init'] = "./output/"+cell+"/homogeneous/u_out.xdmf"
 
+    # Material Parameters
     params['mu'] = 100e-6
     params['nu'] = 0.49
-    # params['degradation'] = np.loadtxt("./output/star_destroyer/homogeneous/degradation.txt")
-    # params['degradation'] = np.loadtxt("./output/single_field/iteration_2/degradation.txt")
+    params['degradation'] = np.loadtxt("./output/"+cell+"/degraded/degradation.txt")  # Fix this
 
-    params['surface_nodes'] = np.loadtxt('../cell_data/star_destroyer/NI/meshes/cell_surface_coarse_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_data/star_destroyer/NI/meshes/cell_surface_coarse_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/star_destroyer/NI/displacements/surface_displacements_coarse_NI.txt')
+    # Boundary Conditions
+    params['surface_nodes'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
+    params['surface_faces'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_faces.txt", int)
+    params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
+    # Simulation and output
     params['chunks'] = 5
-
-    params['output_folder'] = "./output/star_destroyer/homogeneous"
+    params['output_folder'] = "./output/"+cell+"/degraded"
 
     solver_call(params)
 
 class Degradation(df.UserExpression):
+    """
+    Assigns degradation as a function of r, normal distance to cell surface
+    """
     def __init__ (self, dmax, surface_vert, rmax, **kwargs):
         super().__init__(**kwargs)
         self.dmax = dmax
@@ -83,10 +89,10 @@ def solver_call(params):
     with df.XDMFFile(params["mesh"]) as infile:
         infile.read(mesh)
 
-    # mvc = df.MeshValueCollection("size_t", mesh, 3)
-    # with df.XDMFFile(params["domains"]) as infile:
-    #     infile.read(mvc, "domains") 
-    # domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
+    mvc = df.MeshValueCollection("size_t", mesh, 3)
+    with df.XDMFFile(params["domains"]) as infile:
+        infile.read(mvc, "domains") 
+    domains = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     mvc = df.MeshValueCollection("size_t", mesh, 2)
     with df.XDMFFile(params["boundaries"]) as infile:
@@ -94,9 +100,9 @@ def solver_call(params):
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
     # Initialization Mesh
-    # mesh_init = df.Mesh()
-    # with df.XDMFFile(params["mesh_init"]) as infile:
-    #     infile.read(mesh_init)
+    mesh_init = df.Mesh()
+    with df.XDMFFile(params["mesh_init"]) as infile:
+        infile.read(mesh_init)
 
     # Measures
     dx = df.Measure("dx", domain=mesh)
@@ -111,14 +117,14 @@ def solver_call(params):
     du = df.TrialFunction(V)
 
     # Initialize  
-    # V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
-    # u_init = df.Function(V_init)  
-    # u_init_file = df.XDMFFile(params["u_init"])
-    # u_init_file.read_checkpoint(u_init, "u", 0)
-    # u_init.set_allow_extrapolation(True)
+    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    u_init = df.Function(V_init)  
+    u_init_file = df.XDMFFile(params["u_init"])
+    u_init_file.read_checkpoint(u_init, "u", 0)
+    u_init.set_allow_extrapolation(True)
 
-    # u_0 = df.interpolate(u_init, V)
-    # df.assign(u, u_0)
+    u_0 = df.interpolate(u_init, V)
+    df.assign(u, u_0)
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
@@ -137,19 +143,19 @@ def solver_call(params):
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
     
     # Degradation
-    # V_1 = df.FunctionSpace(mesh, "CG", 1)
-    # degradation = df.Function(V_1)
-    # v2d = df.vertex_to_dof_map(V_1)
-    # degradation.vector()[v2d] = params["degradation"]
-    # degradation.set_allow_extrapolation(True)
+    V_1 = df.FunctionSpace(mesh, "CG", 1)
+    degradation = df.Function(V_1)
+    v2d = df.vertex_to_dof_map(V_1)
+    degradation.vector()[v2d] = params["degradation"]
+    degradation.set_allow_extrapolation(True)
 
-    # degradation = Degradation(0.75, surface_nodes, 60)
+    degradation = Degradation(0.75, surface_nodes, 60)
 
-    # mu = nt.ElasticModulus(mu_ff, degradation)
-    # nu = nt.ElasticModulus(nu_ff, degradation) 
-    # kappa = 2*mu*(1+nu)/3/(1-2*nu)
+    mu = nt.ElasticModulus(mu_ff, degradation)
+    nu = nt.ElasticModulus(nu_ff, degradation) 
+    kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
-    c1 = mu_ff/2
+    c1 = mu/2
     c2 = kappa_ff
 
     # Stored strain energy density (Neo-Hookean formulation)
@@ -217,7 +223,7 @@ def solver_call(params):
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     J = df.project(Ju, V=df.FunctionSpace(mesh, "DG", 0))
-    mu = df.project(mu_ff, V=df.FunctionSpace(mesh, "CG", 1))
+    mu = df.project(mu, V=df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]

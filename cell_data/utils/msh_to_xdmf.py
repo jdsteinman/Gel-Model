@@ -2,12 +2,15 @@ import meshio
 import os
 import numpy as np
 
-def main():
-    directories = ['../triangle/IN/meshes']
-    for directory in directories:
-        for file in os.listdir(directory):
+directories = ['../triangle', '../bird', '../star_destroyer']
+subdirectories = ['IN/meshes', 'NI/meshes']
+
+for directory in directories:
+    for subdirectory in subdirectories:
+        path = os.path.join(directory, subdirectory)
+        for file in os.listdir(path):
             if file.endswith(".msh"):
-                input_filename = os.path.join(directory, file)
+                input_filename = os.path.join(path, file)
                 print("Converting %s" % input_filename)
                 output_filename = os.path.splitext(input_filename)[0]
 
@@ -48,6 +51,3 @@ def main():
                 except Exception as e: 
                     print("\t",e)
                     quit()
-
-if __name__ == "__main__":
-    main()

@@ -18,24 +18,27 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def main():
     params = {}
 
-    params['mesh'] = "../cell_meshes/bird/hole.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
+    # Mesh and initial condition
+    cell = "triangle"
+    params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
 
-    params['L'] = 100
-    params['mu_ff'] = 100e-6
+    params['mesh_init'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['u_init'] = "./output/"+cell+"/homogeneous/u_out.xdmf"
+
+    # Material Parameters
+    params['mu'] = 100e-6
     params['nu'] = 0.49
 
-    params['u_init'] = "./output/bird/single_field/u_out.xdmf"
-    params['mesh_init'] = "../cell_meshes/bird/hole_coarse.xdmf"
+    # Boundary Conditions
+    params['surface_nodes'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
+    params['surface_faces'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_faces.txt", int)
+    params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
-    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
-    params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
-    params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
-
-    params['output_folder'] = './output/bird/three_field'
+    # Simulation and output
+    params['chunks'] = 10
+    params['output_folder'] = "./output/"+cell+"/three_field"
 
     solver_call(params)
 
@@ -56,10 +59,14 @@ def solver_call(params):
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
+    # Initialization Mesh
+    mesh_init = df.Mesh()
+    with df.XDMFFile(params["mesh_init"]) as infile:
+        infile.read(mesh_init)
+
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
     displacements = params['displacements']
-    L = params["L"]
 
     # Measures
     dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
@@ -80,33 +87,17 @@ def solver_call(params):
     V_u = V.sub(0)
     V_p = V.sub(1)
     V_J = V.sub(2)
-   
-    mesh_init = df.Mesh()
-    with df.XDMFFile(params["mesh_init"]) as infile:
-        infile.read(mesh_init)
- 
-    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
-    u_init = df.Function(V_init)
-    
-    init_file = df.XDMFFile(params["u_init"])
-    init_file.read_checkpoint(u_init, "u", 0)
-
-    #u_init = nt.InitFunction(surface_nodes, displacements, 10)
-    #u_init = df.Expression(["x[0]/L", "x[1]/L", "x[2]/L"], L=L, degree=1)
-    u_init.set_allow_extrapolation(True)
-    u_0 = df.interpolate(u_init, V_u.collapse())
-   
-    output_folder = params["output_folder"]
-    if rank==0:
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-
-    disp_file = df.XDMFFile(output_folder + "U_init_interpolated.xdmf")
-    u.rename("U","interpolated displacement")
-    disp_file.write(u)
 
     p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
     J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
+   
+    # Displacement
+    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    u_init = df.Function(V_init)  
+    u_init_file = df.XDMFFile(params["u_init"])
+    u_init_file.read_checkpoint(u_init, "u", 0)
+    u_init.set_allow_extrapolation(True)
+    u_0 = df.interpolate(u_init, V)
 
     df.assign(xi,[u_0,p_0,J_0])
     u,p,J = df.split(xi)
