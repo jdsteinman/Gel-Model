@@ -5,7 +5,7 @@
   Note: Cannot currently use OpenCascade with stl files
 */
 
-Merge "cell_surface.stl";
+Merge "cell_surface_coarse.stl";
 
 // Centroid
 cx = 76.9589;

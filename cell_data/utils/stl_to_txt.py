@@ -6,7 +6,7 @@ import numpy as np
 Use to extract nodes and faces from cell surface mesh
 """
 
-directories = ['./star_destroyer']
+directories = ['../star_destroyer/IN/meshes']
 
 for directory in directories:
     for file in os.listdir(directory):
