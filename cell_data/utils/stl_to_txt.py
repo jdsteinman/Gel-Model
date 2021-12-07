@@ -3,10 +3,10 @@ import os
 import numpy as np
 
 """
-Use to extract nodes and faces from cell surface mesh
+Extract points and faces from cell surface mesh
 """
 
-directories = ['../star_destroyer/IN/meshes']
+directories = ['../star_destroyer/NI/meshes']
 
 for directory in directories:
     for file in os.listdir(directory):

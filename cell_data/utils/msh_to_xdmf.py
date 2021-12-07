@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 def main():
-    directories = ['../star_destroyer/IN/meshes']
+    directories = ['../star_destroyer/NI/meshes']
     for directory in directories:
         for file in os.listdir(directory):
             if file.endswith(".msh"):

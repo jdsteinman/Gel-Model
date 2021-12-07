@@ -2,8 +2,8 @@ import meshio
 import os
 import numpy as np
 
-directory = "star_destroyer"
-file = "hole.xdmf"
+directory = "../star_destroyer/NI/meshes/"
+file = "hole_coarse.xdmf"
 
 input_filename = os.path.join(directory, file)
 print("Converting %s" % input_filename)
