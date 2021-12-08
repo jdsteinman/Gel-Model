@@ -7,12 +7,11 @@ import os
 directory = "../triangle"
 dir_in = os.path.join(directory, "IN/meshes")
 dir_out = os.path.join(directory, "NI/meshes")
-filename = "cell_surface_coarse.stl"
+filename = "cell_surface.stl"
 
 # Displacements
-displacements_file = os.path.join(directory, "interpolated_NI_surface_coarse_data.csv")
-displacements_NI = pd.read_csv(displacements_file, index_col=False).loc[:, 'u':'w'].to_numpy()
-displacements_IN = -1*displacements_NI
+displacements_file = os.path.join(directory, "interpolated_IN_surface_data.csv")
+displacements_IN = pd.read_csv(displacements_file, index_col=False).loc[:, 'u':'w'].to_numpy()
 
 # Mesh
 mesh_filename = os.path.join(dir_in, filename)
