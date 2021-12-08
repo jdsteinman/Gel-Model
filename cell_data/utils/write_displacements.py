@@ -6,8 +6,8 @@ import os
 Get displacements from interpolated data
 """
 
-input_filename = "../claw/interpolated_NI_surface_coarse_data.csv"
-output_filename = "../claw/NI/displacements/surface_displacements_coarse.txt"
+input_filename = "../finger/interpolated_NI_surface_data.csv"
+output_filename = "../finger/NI/displacements/surface_displacements.txt"
 
 dat = pd.read_csv(input_filename, index_col=False)
 disp = dat.loc[:, 'u':'w']

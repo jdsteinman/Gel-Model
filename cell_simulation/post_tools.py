@@ -1,8 +1,8 @@
 import numpy as np
-from numpy.core.arrayprint import dtype_is_implied
 import pandas as pd
+import meshio
 import pyvtk
-from numpy.linalg import eig
+from numpy.linalg import eig, norm
 from scipy.linalg import polar
 
 """
@@ -99,7 +99,7 @@ class UnstructuredData:
 
         # Preallocate
         self.r = np.zeros((npoints))
-        self.res = np.zeros((npoints))
+        self.discrepancy = np.zeros((npoints))
         self.dots = np.zeros((npoints))
         self.Ndots = np.zeros((npoints))
         self.C = np.zeros((npoints, 3, 3))
@@ -131,7 +131,7 @@ class UnstructuredData:
             pyvtk.Vectors(self.u, name="u"),
             pyvtk.Vectors(self.u, name="u_sim"),
             pyvtk.Vectors(self.u_data, name="u_data"),
-            pyvtk.Vectors(self.res, name="residuals"),
+            pyvtk.Scalars(self.discrepancy, name="discrepancy"),
             pyvtk.Scalars(self.dots, name="Dot Product"),
             pyvtk.Scalars(self.Ndots, name="Normalized Dot Product"),
             pyvtk.Scalars(self.r, name="normal distance"),
@@ -167,7 +167,7 @@ class UnstructuredData:
             self.r[i] = np.amin(r)
 
         # Residuals
-        self.res = self.u_data - self.u
+        self.discrepancy = norm(self.u_data, axis=1) - norm(self.u, axis=1)
 
         # Dot products
         self.dots  = np.sum(self.u*self.u_data, axis=1)
