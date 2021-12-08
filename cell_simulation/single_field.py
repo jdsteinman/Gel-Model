@@ -21,7 +21,7 @@ def main():
     params = {}
 
     # Mesh and initial condition
-    cell = "claw"
+    cell = "triangle"
     params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
     params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
     params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"

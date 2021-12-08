@@ -6,7 +6,7 @@ import numpy as np
 Extract points and faces from cell surface mesh
 """
 
-directories = ['../triangle', '../bird', '../star_destroyer']
+directories = ['../triangle', '../bird', '../finger']
 subdirectories = ['IN/meshes', 'NI/meshes']
 
 for directory in directories:
