@@ -21,7 +21,7 @@ def main():
     params = {}
 
     # Mesh and initial condition
-    cell = "star_destroyer"
+    cell = "claw"
     params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
     params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
     params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
@@ -145,7 +145,7 @@ def solver_call(params):
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
-    solver.parameters['newton_solver']['relative_tolerance'] = 1e-5
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-6
 
     # MPI
     ele = np.array(len(mesh.cells()),'d') # Number of elements

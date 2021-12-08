@@ -1,7 +1,7 @@
 import numpy as np
 import meshio
 
-cell = 'star_destroyer'
+cell = 'claw'
 exp = 'NI'
 
 surface_points = np.loadtxt("../"+cell+"/"+exp+"/meshes/cell_surface_coarse_vertices.txt")
