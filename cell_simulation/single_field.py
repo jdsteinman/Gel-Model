@@ -39,7 +39,7 @@ def main():
     params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
     # Simulation and output
-    params['chunks'] = 4
+    params['chunks'] = 40
     params['output_folder'] = "./output/"+cell+"/homogeneous"
 
     solver_call(params)

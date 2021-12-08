@@ -2,8 +2,11 @@ import meshio
 import os
 import numpy as np
 
-directories = ['../triangle', '../bird', '../star_destroyer']
-subdirectories = ['IN/meshes', 'NI/meshes']
+# directories = ['../triangle', '../bird', '../star_destroyer']
+# subdirectories = ['IN/meshes', 'NI/meshes']
+
+directories = ['../triangle']
+subdirectories = ['NI/meshes']
 
 for directory in directories:
     for subdirectory in subdirectories:
