@@ -18,23 +18,27 @@ df.parameters['krylov_solver']['maximum_iterations'] = 100000
 def main():
     params = {}
 
-    params['mesh'] = "../cell_meshes/bird/hole.xdmf"
-    params['domains'] = "../cell_meshes/bird/hole_domains.xdmf"
-    params['boundaries'] = "../cell_meshes/bird/hole_boundaries.xdmf"
+    # Mesh and initial condition
+    cell = "triangle"
+    params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
+    params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
 
-    params['L'] = 100
-    params['mu_ff'] = 100e-6
+    params['mesh_init'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
+    params['u_init'] = "./output/"+cell+"/homogeneous/u_out.xdmf"
+
+    # Material Parameters
+    params['mu'] = 100e-6
     params['nu'] = 0.49
 
-    params['surface_nodes'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_vertices.txt')
-    params['surface_faces'] = np.loadtxt('../cell_meshes/bird/cell_surface_500_faces.txt', int)
-    params['displacements'] = np.loadtxt('../cell_data/bird/surface_displacements_500.csv')
-    params['beads_init'] = np.loadtxt('../cell_data/bird/beads_init_filtered.txt')
-    params['beads_final'] = np.loadtxt('../cell_data/bird/beads_final_filtered.txt')
+    # Boundary Conditions
+    params['surface_nodes'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
+    params['surface_faces'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_faces.txt", int)
+    params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
-    params['res'] = np.loadtxt('./res.csv',  delimiter="," ,skiprows=1)
-
-    params['output_folder'] = './output/bird/three_field/strain'
+    # Simulation and output
+    params['chunks'] = 10
+    params['output_folder'] = "./output/"+cell+"/three_field"
 
     solver_call(params)
 
@@ -55,10 +59,14 @@ def solver_call(params):
         infile.read(mvc, "boundaries") 
     boundaries = df.cpp.mesh.MeshFunctionSizet(mesh, mvc)
 
+    # Initialization Mesh
+    mesh_init = df.Mesh()
+    with df.XDMFFile(params["mesh_init"]) as infile:
+        infile.read(mesh_init)
+
     surface_nodes = params['surface_nodes']
     surface_faces = params['surface_faces']
     displacements = params['displacements']
-    L = params["L"]
 
     # Measures
     dx = df.Measure("dx", domain=mesh, subdomain_data=domains)
@@ -79,19 +87,20 @@ def solver_call(params):
     V_u = V.sub(0)
     V_p = V.sub(1)
     V_J = V.sub(2)
-   
-    u_0 = df.interpolate(df.Constant((0.0,0.0,0.0)), V_u.collapse())
+
     p_0 = df.interpolate(df.Constant(0.0), V_p.collapse())
     J_0 = df.interpolate(df.Constant(1.), V_J.collapse())
+   
+    # Displacement
+    V_init = df.VectorFunctionSpace(mesh_init, "CG", 2)
+    u_init = df.Function(V_init)  
+    u_init_file = df.XDMFFile(params["u_init"])
+    u_init_file.read_checkpoint(u_init, "u", 0)
+    u_init.set_allow_extrapolation(True)
+    u_0 = df.interpolate(u_init, V)
 
     df.assign(xi,[u_0,p_0,J_0])
     u,p,J = df.split(xi)
-
-    # Res
-    res = params["res"]
-    normal_distance = res[:,0]
-    discrepancy = np.sum(res[:,1:4]**2, axis=1)**0.5
-    D = (discrepancy-np.min(discrepancy)) / (np.max(discrepancy)-np.min(discrepancy)) * (0.5)
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Body force per unit volume
@@ -107,14 +116,12 @@ def solver_call(params):
     IC_bar = df.tr(C_bar)
 
     # Material parameters
-    mu_ff = params["mu_ff"]
-    mu = nt.ElasticModulus(surface_nodes, mu_ff, normal_distance, D)
-    nu_ff = params["nu"]
-    nu = nt.ElasticModulus(surface_nodes, nu_ff, normal_distance, D)
+    mu = params["mu_ff"]
+    nu = params["nu"]
     kappa = 2*mu*(1+nu)/3/(1-2*nu)
 
-    c1 = mu/2
-    c2 = kappa
+    c1 = df.Constant(mu/2)
+    c2 = df.Constant(kappa)
 
     # Stored strain energy density (mixed formulation)
     psi = c1*(IC_bar-d) + c2*(J**2-1-2*df.ln(J))/4 + p*(Ju-J)
@@ -156,7 +163,7 @@ def solver_call(params):
     # Create nonlinear variational problem
     problem = df.NonlinearVariationalProblem(res, xi, bcs=bcs, J=Dres)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['linear_solver']  = 'mumps'
+    solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     #solver.parameters['newton_solver']['preconditioner'] = 'hypre_amg'
 
     # MPI
@@ -200,6 +207,29 @@ def solver_call(params):
 
     u, p, J = xi.split(True)
 
+    # Interpolate at bead locations
+    beads_init = params['beads_init']
+    beads_final = params['beads_final']
+    points = []
+    u_sim = []
+    u_data = []
+
+    for point in beads_init:
+        try:
+            uu = u(point)
+        except:
+            uu = -1e16
+        umax = np.array(0.,'d')
+        comm.Reduce(uu, umax, op=MPI.MAX)
+        u_sim.append(umax)
+
+    if rank==0: 
+        u_data.beads_final-beads_init
+        points = beads_init
+        nt.write_vtk(output_folder+"bead_displacements", points, u_sim, u_data)
+        nt.write_txt(output_folder+"bead_displacements_sim.txt", points, u_sim)
+        nt.write_txt(output_folder+"bead_displacetxments_data.txt", points, u_data)
+
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
 
@@ -209,19 +239,19 @@ def solver_call(params):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-    disp_file = df.XDMFFile(os.path.join(output_folder,"U.xdmf"))
+    disp_file = df.XDMFFile(output_folder + "U.xdmf")
     u.rename("U","displacement")
     disp_file.write(u)
 
-    F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
+    F_file = df.XDMFFile(output_folder + "F.xdmf")
     F.rename("F","deformation gradient")
     F_file.write(F)
 
-    J_file = df.XDMFFile(os.path.join(output_folder, "J.xdmf"))
+    J_file = df.XDMFFile(output_folder + "J.xdmf")
     J.rename("J","Jacobian")
     J_file.write(J)
 
-    p_file = df.XDMFFile(os.path.join(output_folder, "p.xdmf"))
+    p_file = df.XDMFFile(output_folder + "p.xdmf")
     p.rename("p","pressure")
     p_file.write(p)
 
@@ -229,7 +259,7 @@ def solver_call(params):
         f.write("Mesh: {:s}\n".format(params["mesh"]))
         f.write("No. Elements: {:d}\n".format(int(ele_sum)))
         f.write("No. Processors: {:d}\n".format(int(comm.Get_size())))
-        f.write("mu_ff = {:e}\n".format(mu_ff))
+        f.write("mu_ff = {:e}\n".format(mu))
         f.write("kappa = {:e}\n".format(kappa))
         f.write("Total Time = {:f}s\n".format(time.time()-total_start))
 

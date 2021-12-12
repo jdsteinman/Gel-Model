@@ -13,7 +13,7 @@ df.parameters['form_compiler']['representation'] = 'uflacs'
 df.parameters['form_compiler']['optimize'] = True
 df.parameters['form_compiler']['cpp_optimize'] = True
 df.parameters['form_compiler']['quadrature_degree'] = 3
-df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
+df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-5
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-4
 df.parameters['krylov_solver']['maximum_iterations'] = 100000
 
@@ -21,7 +21,7 @@ def main():
     params = {}
 
     # Mesh and initial condition
-    cell = "triangle"
+    cell = "finger"
     params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
     params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
     params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
@@ -39,7 +39,7 @@ def main():
     params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
     # Simulation and output
-    params['chunks'] = 40
+    params['chunks'] = 4
     params['output_folder'] = "./output/"+cell+"/homogeneous"
 
     solver_call(params)
@@ -145,7 +145,7 @@ def solver_call(params):
     solver = df.NonlinearVariationalSolver(problem)
     solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
-    solver.parameters['newton_solver']['relative_tolerance'] = 1e-6
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
 
     # MPI
     ele = np.array(len(mesh.cells()),'d') # Number of elements

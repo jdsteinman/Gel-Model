@@ -5,7 +5,7 @@ import numpy as np
 # directories = ['../triangle', '../bird', '../star_destroyer']
 # subdirectories = ['IN/meshes', 'NI/meshes']
 
-directories = ['../triangle']
+directories = ['../finger']
 subdirectories = ['NI/meshes']
 
 for directory in directories:

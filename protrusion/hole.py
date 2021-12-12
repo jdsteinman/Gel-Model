@@ -29,16 +29,17 @@ def main():
     params['mu']  = 100e-6
     params['nu'] = 0.49
 
-    params["chunks"] = 3
+    params["chunks"] = 1
 
     # params['output_folder'] = './output/DBC/homogeneous'
     # params['output_folder'] = './output/DBC/FGM'
-    params['output_folder'] = './output/FBC/homogeneous'
+    # params['output_folder'] = './output/FBC/homogeneous'
     # params['output_folder'] = './output/FBC/FGM'
+    params['output_folder'] = './output/reinforced/'
 
     solver_call(params)
 
-class Modulus(df.UserExpression):
+class HomogeneousModulus(df.UserExpression):
     def __init__(self, modulus_gel, **kwargs):
         self.lmbda_gel = modulus_gel
         super().__init__(**kwargs)
@@ -65,7 +66,8 @@ class DegradedModulus(df.UserExpression):
         r = np.amin(r)
 
         if r < 10:
-            value[0]=self.lmbda_gel*((r/10)**0.5 + 0.01)
+            # value[0]=self.lmbda_gel*((r/10)**0.5 + 0.01)
+            value[0]=self.lmbda_gel*(2-(r/10)**0.5)
         else:
             value[0] =  self.lmbda_gel*1.01 
 
@@ -108,12 +110,13 @@ def solver_call(params):
     u_init.set_allow_extrapolation(True)
 
     u_0 = df.interpolate(u_init, V)
-    # df.assign(u, u_0)
+    df.assign(u, u_0)
 
     # Kinematics
     B = df.Constant((0, 0, 0))     # Traction force on the boundary
+    T = df.Constant((0, 0, 0))     # Traction force on the boundary
     # T = df.Constant((-5e-5, 0, 0))     # Traction force on the boundary
-    T = df.Expression(["-7e-5*t*x[0]/10", "0", "0"], t=0, degree=0)    # Traction force on the boundary
+    # T = df.Expression(["-7e-5*t*x[0]/10", "0", "0"], t=0, degree=0)    # Traction force on the boundary
     dim = u.geometric_dimension()
     I = df.Identity(dim)             # Identity tensor
     F = I + df.grad(u)             # Deformation gradient
@@ -127,8 +130,8 @@ def solver_call(params):
     # Material parameters
     nu = params["nu"]          
     mu_ff = params["mu"]
-    mu = Modulus(mu_ff)
-    # mu = DegradedModulus(mu_ff, surface_vert)  
+    # mu = Modulus(mu_ff)
+    mu = DegradedModulus(mu_ff, surface_vert)  
     lmbda = 2*nu*mu/(1-2*nu)      
     kappa = lmbda+2*mu/3
 
@@ -150,16 +153,16 @@ def solver_call(params):
     inner_bc = df.DirichletBC(V, u_d, boundaries, 202)
 
     # bcs = [inner_bc, outer_bc]
-    bcs = [outer_bc]
+    bcs = [outer_bc, inner_bc]
 
     # Create nonlinear variational problem and solve
     problem = df.NonlinearVariationalProblem(dPi, u, bcs=bcs, J=ddPi)
     solver = df.NonlinearVariationalSolver(problem)
-    solver.parameters['newton_solver']['relative_tolerance'] = 1e-9
-    # solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
-    solver.parameters['newton_solver']['linear_solver'] = 'mumps'
-    # solver.parameters['newton_solver']['linear_solver'] = 'gmres'
-    # solver.parameters['newton_solver']['preconditioner'] = 'hypre_amg'
+    # solver.parameters['newton_solver']['relative_tolerance'] = 1e-9
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-4
+    # solver.parameters['newton_solver']['linear_solver'] = 'mumps'
+    solver.parameters['newton_solver']['linear_solver'] = 'gmres'
+    solver.parameters['newton_solver']['preconditioner'] = 'hypre_amg'
     
     # Solve
     chunks = params["chunks"]
