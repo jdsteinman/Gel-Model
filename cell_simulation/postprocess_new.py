@@ -102,7 +102,7 @@ class postprocess():
 
 
 if __name__=="__main__":
-    cell = "claw"
+    cell = "triangle"
     directory = "./output/" + cell + "/homogeneous"
 
     # Surface points
