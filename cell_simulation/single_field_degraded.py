@@ -1,5 +1,5 @@
 import dolfin as df
-from dolfin.function.expression import UserExpression
+import pandas as pd
 import numpy as np
 import nodal_tools as nt
 import time
@@ -7,6 +7,7 @@ import os
 import sys
 from mpi4py import MPI
 from shutil import copyfile 
+from numpy.linalg import norm
 
 df.parameters['linear_algebra_backend'] = 'PETSc'
 df.parameters['form_compiler']['representation'] = 'uflacs'
@@ -15,24 +16,23 @@ df.parameters['form_compiler']['cpp_optimize'] = True
 df.parameters['form_compiler']['quadrature_degree'] = 3
 df.parameters['krylov_solver']['absolute_tolerance' ]= 1E-8
 df.parameters['krylov_solver']['relative_tolerance'] = 1E-4
-df.parameters['krylov_solver']['maximum_iterations'] = 100000
+df.parameters['krylov_solver']['maximum_iterations'] = 10000
 
 def main():
     params = {}
 
     # Mesh and initial condition
-    cell = "bird"
+    cell = "finger"
     params['mesh'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
     params['domains'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_domains.xdmf"
     params['boundaries'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse_boundaries.xdmf"
 
     params['mesh_init'] = "../cell_data/"+cell+"/NI/meshes/hole_coarse.xdmf"
-    params['u_init'] = "./output/"+cell+"/homogeneous/u_out.xdmf"
+    params['u_init'] = "./output/"+cell+"/homogeneous/u_cg2.xdmf"
 
     # Material Parameters
     params['mu'] = 100e-6
     params['nu'] = 0.49
-    params['degradation'] = np.loadtxt("./output/"+cell+"/degraded/degradation.txt")  # Fix this
 
     # Boundary Conditions
     params['surface_nodes'] = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
@@ -40,34 +40,36 @@ def main():
     params['displacements'] = np.loadtxt("../cell_data/"+cell+"/NI/displacements/surface_displacements_coarse.txt")
 
     # Simulation and output
-    params['chunks'] = 5
-    params['output_folder'] = "./output/"+cell+"/degraded"
+    params['chunks'] = 3
 
-    solver_call(params)
+    # Degradation
+    u_data = pd.read_csv("../cell_data/"+cell+"/NI/displacements/interpolated_data_coarse.csv", index_col=False)
+    params["u_data"] = u_data.loc[:,'u':'w'].to_numpy()
+    params['u_sim'] = np.loadtxt("./output/"+cell+"/homogeneous/u_vertex_values.txt")
+
+    for i in range(3):
+        params['output_folder'] = "./output/"+cell+"/degraded/iteration_" + str(i+1)
+        solver_call(params)
+        params['u_sim'] = np.loadtxt("./output/"+cell+"/degraded/iteration_" + str(i+1) + "/u_vertex_values.txt")
+
 
 class Degradation(df.UserExpression):
-    """
-    Assigns degradation as a function of r, normal distance to cell surface
-    """
-    def __init__ (self, dmax, surface_vert, rmax, **kwargs):
+    def __init__ (self, mesh, u_data, u_sim, **kwargs):
         super().__init__(**kwargs)
-        self.dmax = dmax
-        self.vert = surface_vert
-        self.rmax = rmax
+        
+        u_data_mag = norm(u_data, axis=1)
+        u_sim_mag = norm(u_sim, axis=1)
+        discrepancy = u_data_mag - u_sim_mag
+        D_array = discrepancy * -0.99/5 
+
+        V = df.FunctionSpace(mesh, "P", 1)
+        v2d = df.vertex_to_dof_map(V)
+        self.D = df.Function(V)
+        self.D.vector()[v2d] = D_array
+        self.D.set_allow_extrapolation(True)
 
     def eval(self, value, x):
-        px = np.array([x[0], x[1], x[2]], dtype="float64")
-
-        # Distance to surface
-        r = px - self.vert
-        r = np.sum(np.abs(r)**2, axis=-1)**(1./2)
-        r = np.amin(r)
-
-        if r < self.rmax:
-            value[0] = -self.dmax*(1/(r+1)-1/(self.rmax+1))
-            value[0] = -self.dmax
-        else:
-            value[0] = 0
+        value[0] = self.D(x)
 
     def value_shape(self):
         return ()
@@ -143,17 +145,10 @@ def solver_call(params):
     kappa_ff = 2*mu_ff*(1+nu_ff)/3/(1-2*nu_ff)
     
     # Degradation
-    V_1 = df.FunctionSpace(mesh, "CG", 1)
-    degradation = df.Function(V_1)
-    v2d = df.vertex_to_dof_map(V_1)
-    degradation.vector()[v2d] = params["degradation"]
-    degradation.set_allow_extrapolation(True)
-
-    degradation = Degradation(0.75, surface_nodes, 60)
-
-    mu = nt.ElasticModulus(mu_ff, degradation)
-    nu = nt.ElasticModulus(nu_ff, degradation) 
-    kappa = 2*mu*(1+nu)/3/(1-2*nu)
+    u_data = params["u_data"]
+    u_sim = params["u_sim"]
+    D = Degradation(mesh, u_data, u_sim)
+    mu = nt.ElasticModulus(mu_ff, D)
 
     c1 = mu/2
     c2 = kappa_ff
@@ -165,8 +160,8 @@ def solver_call(params):
     Pi = psi*dx - df.dot(B, u)*dx - df.dot(T, u)*ds
 
     # Compute first variation of Pi (directional derivative about u in the direction of w)
-    res = df.derivative(Pi, u, u_)
-    Dres = df.derivative(res, u, du)
+    dPi = df.derivative(Pi, u, u_)
+    ddPi = df.derivative(dPi, u, du)
 
     # Boundary Conditions
     midpoints = nt.get_midpoints(surface_nodes, surface_faces)
@@ -182,8 +177,9 @@ def solver_call(params):
     bcs = [inner_bc, outer_bc]
 
     # Create nonlinear variational problem
-    problem = df.NonlinearVariationalProblem(res, u, bcs=bcs, J=Dres)
+    problem = df.NonlinearVariationalProblem(dPi, u, bcs=bcs, J=ddPi)
     solver = df.NonlinearVariationalSolver(problem)
+    solver.parameters['newton_solver']['relative_tolerance'] = 1e-6
     solver.parameters['newton_solver']['linear_solver']  = 'gmres'
     solver.parameters['newton_solver']['preconditioner']  = 'hypre_amg'
 
@@ -234,6 +230,10 @@ def solver_call(params):
     u_file = df.XDMFFile(os.path.join(output_folder, "u.xdmf"))
     u.rename("u","displacement")
     u_file.write(u)
+
+    u_array = u.compute_vertex_values(mesh)
+    u_array = u_array.reshape((-1,3), order="F")
+    np.savetxt(os.path.join(output_folder, "u_vertex_values.txt"), u_array)
 
     F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
     F.rename("F","deformation gradient")

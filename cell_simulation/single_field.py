@@ -183,7 +183,6 @@ def solver_call(params):
     # Projections
     F = df.project(F, V=df.TensorFunctionSpace(mesh, "CG", 1, shape=(3, 3)), solver_type = 'cg', preconditioner_type = 'amg')
     J = df.project(Ju, V=df.FunctionSpace(mesh, "DG", 0))
-    mu = df.project(mu_ff, V=df.FunctionSpace(mesh, "CG", 1))
 
     # Outputs
     output_folder = params["output_folder"]
@@ -195,6 +194,10 @@ def solver_call(params):
     u.rename("u","displacement")
     u_file.write(u)
 
+    u_array = u.compute_vertex_values(mesh)
+    u_array = u_array.reshape((-1,3), order="F")
+    np.savetxt(os.path.join(output_folder, "u_vertex_values.txt"), u_array)
+
     F_file = df.XDMFFile(os.path.join(output_folder, "F.xdmf"))
     F.rename("F","deformation gradient")
     F_file.write(F)
@@ -203,11 +206,7 @@ def solver_call(params):
     J.rename("J","Jacobian")
     J_file.write(J)
 
-    mu_file = df.XDMFFile(os.path.join(output_folder, "mu.xdmf"))
-    mu.rename("mu","shear modulus")
-    mu_file.write(mu)
-
-    out_file = df.XDMFFile((os.path.join(output_folder, "u_out.xdmf")))
+    out_file = df.XDMFFile((os.path.join(output_folder, "u_cg2.xdmf")))
     out_file.write_checkpoint(u, "u", 0)   #Not appending
 
     if rank==0:
