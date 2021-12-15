@@ -1,4 +1,7 @@
 import numpy as np
+from numpy.core.fromnumeric import shape
+from numpy.core.numeric import ones
+from numpy.core.records import array
 import pandas as pd
 import meshio
 import h5py
@@ -8,7 +11,7 @@ from numpy.linalg import eig, norm, det
 from scipy.linalg import polar
 
 class postprocess():
-    def __init__(self, filename, points, conn, surface_points, u_sim, u_data, F):
+    def __init__(self, filename, points, conn, surface_points, u_sim, u_data, F, mu):
         """
         Class to export point data to vtk.
         """
@@ -26,10 +29,11 @@ class postprocess():
 
         self.F = F
 
+        self.mu=mu
+
         # Preallocate
         self.r = np.zeros((self.npoints))               # Distance to cell surface
         self.discrepancy = np.zeros((self.npoints))     # |U_data| - |u_sim|
-        self.dots_normalized = np.zeros((self.npoints)) # dot(u_data_norm, u_sim_norm) 
         self.dots = np.zeros((self.npoints))            # dot(u_data, u_sim)
         self.J = np.zeros((self.npoints))               # Jacobian     
         self.C = np.zeros((self.npoints, 3, 3))         # Right Cauchy-Green Tensor
@@ -51,13 +55,12 @@ class postprocess():
             self.r[i] = np.amin(r)
 
         # Discrepancy
-        self.discrepancy = norm(self.u_data, axis=1) - norm(self.u_sim, axis=1)
+        u_data_mag = norm(self.u_data, axis=1).reshape(-1,1)
+        u_sim_mag =  norm(self.u_sim, axis=1).reshape(-1,1)
+        self.discrepancy =  u_data_mag - u_sim_mag
 
         # Dot products
-        u_sim_norm = norm(self.u_sim, axis=1)
-        u_data_norm = norm(self.u_data, axis=1)
-        self.dots  = np.sum(self.u*self.u_data, axis=1)
-        self.dots_normalized = np.sum(u_data_norm*u_sim_norm, axis=1)
+        self.dots  = np.sum(self.u_sim/u_sim_mag*self.u_data/u_data_mag, axis=1)
 
         # Jacobain
         self.J = det(self.F)
@@ -118,38 +121,37 @@ class postprocess():
                 self.u_sim[i,:] = np.nan
                 self.discrepancy[i] = np.nan    
 
-                print(u_neighbor_mag)
-                print(u_mag)
-
     def write_to_vtk(self, filename):
         # Write to mesh
         point_data = {
             "u_sim":self.u_sim,
             "u_data":self.u_data,
             "discrepancy":self.discrepancy,
+            "dots":self.dots,
             "r":self.r,
-            "F":self.F,
             "J":self.J,
-            "C":self.C,
-            "U":self.U,
-            "R":self.R,
+            "F":self.F.reshape(-1,9),
+            "C":self.C.reshape(-1,9),
+            "U":self.U.reshape(-1,9),
+            "R":self.R.reshape(-1,9),
             "theta":self.theta,
             "eigenval":self.eigval,
-            "eigenvec":self.eigenvec
+            "eigenvec":self.eigvec.reshape(-1,9),
+            "mu":self.mu
         }
 
         mesh = meshio.Mesh(self.points,
             cells=[("tetra", self.conn)],
             point_data=point_data 
         )
-        print(mesh)
 
         mesh.write(filename)
 
 
 if __name__=="__main__":
-    cell = "triangle"
-    directory = "./output/" + cell + "/homogeneous"
+    cell = "finger"
+    # directory = "./output/" + cell + "/homogeneous"
+    directory = "./output/" + cell + "/degraded/iteration_2"
 
     # Surface points
     surface_points = np.loadtxt("../cell_data/"+cell+"/NI/meshes/cell_surface_coarse_vertices.txt")
@@ -174,6 +176,14 @@ if __name__=="__main__":
     F = f['VisualisationVector']['0'][()]
     F = np.array(F).reshape((-1,3,3))
 
+    # mu
+    if os.path.exists(os.path.join(directory, "mu.h5")):
+        f = h5py.File(os.path.join(directory, "mu.h5"), 'r')
+        mu = f['VisualisationVector']['0'][()]
+        mu = np.array(mu) * 10**6
+    else:
+        mu = np.ones(u_sim.shape[0])*100
+
     # Postprocess
     output_filename = os.path.join(directory, "simulation_post.vtk")
-    postprocess(output_filename, points, conn, surface_points, u_sim, u_data, F)
+    postprocess(output_filename, points, conn, surface_points, u_sim, u_data, F, mu)
